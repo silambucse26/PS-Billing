@@ -1,0 +1,569 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_1 = require("../middleware/auth");
+const supabaseAdmin_1 = require("../config/supabaseAdmin");
+const router = (0, express_1.Router)();
+// Sales summary, stock worth, margin, time breakdown & best-selling products rollup
+router.get('/dashboard', auth_1.requireAuth, async (req, res) => {
+    try {
+        const role = req.user?.role;
+        let targetShopId = req.query.shopId || (role !== 'super_admin' ? req.user?.shop_id : null);
+        // If non-admin and no shop context, error out
+        if (role !== 'super_admin' && !targetShopId) {
+            return res.status(400).json({ error: 'Shop context missing' });
+        }
+        // 1. Calculate Date Filters
+        const period = req.query.period || 'all';
+        let startDateObj = null;
+        let endDateObj = null;
+        const now = new Date();
+        if (period === 'today') {
+            startDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+            endDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        }
+        else if (period === 'yesterday') {
+            startDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+            endDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+        }
+        else if (period === 'this_week') {
+            const dayOfWeek = now.getDay();
+            const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+            startDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday, 0, 0, 0, 0);
+            endDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        }
+        else if (period === 'this_month') {
+            startDateObj = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+            endDateObj = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        }
+        else if (period === 'last_month') {
+            startDateObj = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+            endDateObj = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        }
+        else if (period === 'this_year') {
+            startDateObj = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+            endDateObj = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        }
+        else if (period === 'last_year') {
+            startDateObj = new Date(now.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
+            endDateObj = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+        }
+        else if (req.query.year || req.query.month || req.query.day) {
+            const y = req.query.year ? parseInt(req.query.year, 10) : now.getFullYear();
+            if (req.query.month) {
+                const m = parseInt(req.query.month, 10) - 1;
+                if (req.query.day) {
+                    const d = parseInt(req.query.day, 10);
+                    startDateObj = new Date(y, m, d, 0, 0, 0, 0);
+                    endDateObj = new Date(y, m, d, 23, 59, 59, 999);
+                }
+                else {
+                    startDateObj = new Date(y, m, 1, 0, 0, 0, 0);
+                    endDateObj = new Date(y, m + 1, 0, 23, 59, 59, 999);
+                }
+            }
+            else {
+                startDateObj = new Date(y, 0, 1, 0, 0, 0, 0);
+                endDateObj = new Date(y, 11, 31, 23, 59, 59, 999);
+            }
+        }
+        else if (req.query.startDate) {
+            startDateObj = new Date(req.query.startDate);
+            if (req.query.endDate) {
+                const end = new Date(req.query.endDate);
+                end.setHours(23, 59, 59, 999);
+                endDateObj = end;
+            }
+            else {
+                endDateObj = new Date(startDateObj);
+                endDateObj.setHours(23, 59, 59, 999);
+            }
+        }
+        // 2. Fetch Invoices with items and products (filtered by date if applicable)
+        let invQuery = supabaseAdmin_1.supabaseAdmin
+            .from('invoices')
+            .select('*, customer:customers(id, name, phone), shop:shops(id, name, state, phone, gstin, address), items:invoice_items(*, product:products(id, name, image_url, purchase_price, sale_price, current_stock))')
+            .order('created_at', { ascending: false });
+        if (targetShopId) {
+            invQuery = invQuery.eq('shop_id', targetShopId);
+        }
+        if (startDateObj) {
+            invQuery = invQuery.gte('created_at', startDateObj.toISOString());
+        }
+        if (endDateObj) {
+            invQuery = invQuery.lte('created_at', endDateObj.toISOString());
+        }
+        const { data: invoices, error: invErr } = await invQuery;
+        if (invErr)
+            throw invErr;
+        // 3. Fetch Products (Products inventory represents current live catalog)
+        let prodQuery = supabaseAdmin_1.supabaseAdmin
+            .from('products')
+            .select('*, shop:shops(id, name, state)')
+            .order('name', { ascending: true });
+        if (targetShopId) {
+            prodQuery = prodQuery.eq('shop_id', targetShopId);
+        }
+        const { data: products, error: prodErr } = await prodQuery;
+        if (prodErr)
+            throw prodErr;
+        // 4. Compute Metrics
+        let totalSales = 0;
+        let totalCollected = 0;
+        let outstanding = 0;
+        let realizedMargin = 0;
+        const productSalesMap = {};
+        // Time-series breakdown buckets
+        const timeTrendMap = {};
+        // Determine breakdown aggregation granularity
+        let granularity = 'daily';
+        if (period === 'today' || period === 'yesterday' || (startDateObj && endDateObj && (endDateObj.getTime() - startDateObj.getTime()) <= 86400000)) {
+            granularity = 'hourly';
+        }
+        else if (period === 'this_year' || period === 'last_year' || (startDateObj && endDateObj && (endDateObj.getTime() - startDateObj.getTime()) > 65 * 86400000)) {
+            granularity = 'monthly';
+        }
+        for (const inv of invoices || []) {
+            const invTotal = Number(inv.total_amount || 0);
+            const invPaid = Number(inv.paid_amount || 0);
+            totalSales += invTotal;
+            totalCollected += invPaid;
+            outstanding += (invTotal - invPaid);
+            let invoiceMargin = 0;
+            for (const item of inv.items || []) {
+                const qty = Number(item.quantity || 0);
+                const unitPrice = Number(item.unit_price || 0);
+                const lineTotal = Number(item.line_total || (qty * unitPrice));
+                const costPrice = Number(item.product?.purchase_price || (unitPrice * 0.6)); // Fallback cost price
+                const itemProfit = (unitPrice - costPrice) * qty;
+                invoiceMargin += itemProfit;
+                realizedMargin += itemProfit;
+                const prodId = item.product_id || item.product_name || 'unknown';
+                if (!productSalesMap[prodId]) {
+                    productSalesMap[prodId] = {
+                        id: item.product_id,
+                        name: item.product_name || item.product?.name || 'Unknown Product',
+                        image_url: item.product?.image_url || null,
+                        unitsSold: 0,
+                        revenue: 0,
+                        currentStock: Number(item.product?.current_stock || 0),
+                        marginEarned: 0
+                    };
+                }
+                productSalesMap[prodId].unitsSold += qty;
+                productSalesMap[prodId].revenue += lineTotal;
+                productSalesMap[prodId].marginEarned += itemProfit;
+            }
+            // Populate time trends
+            const invDate = new Date(inv.created_at || inv.invoice_date || now);
+            let bucketKey = '';
+            let bucketLabel = '';
+            if (granularity === 'hourly') {
+                const hour = invDate.getHours();
+                bucketKey = `${hour.toString().padStart(2, '0')}:00`;
+                const ampm = hour >= 12 ? 'PM' : 'AM';
+                const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+                bucketLabel = `${displayHour} ${ampm}`;
+            }
+            else if (granularity === 'monthly') {
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                bucketKey = `${invDate.getFullYear()}-${(invDate.getMonth() + 1).toString().padStart(2, '0')}`;
+                bucketLabel = `${monthNames[invDate.getMonth()]} ${invDate.getFullYear()}`;
+            }
+            else {
+                bucketKey = invDate.toISOString().slice(0, 10);
+                bucketLabel = invDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            }
+            if (!timeTrendMap[bucketKey]) {
+                timeTrendMap[bucketKey] = {
+                    label: bucketLabel,
+                    revenue: 0,
+                    margin: 0,
+                    invoiceCount: 0,
+                    dateKey: bucketKey
+                };
+            }
+            timeTrendMap[bucketKey].revenue += invTotal;
+            timeTrendMap[bucketKey].margin += invoiceMargin;
+            timeTrendMap[bucketKey].invoiceCount += 1;
+        }
+        // Convert time trend map to sorted list
+        const timeTrends = Object.keys(timeTrendMap)
+            .sort()
+            .map(k => timeTrendMap[k]);
+        // Stock value calculations on current inventory
+        let totalStockValue = 0;
+        let totalCostValue = 0;
+        let totalUnitsInStock = 0;
+        const outOfStockProducts = [];
+        const lowStockProducts = [];
+        for (const p of products || []) {
+            const stock = Number(p.current_stock || 0);
+            const sPrice = Number(p.sale_price || 0);
+            const pPrice = Number(p.purchase_price || (sPrice * 0.6));
+            const reorder = Number(p.reorder_level || 5);
+            const sName = p.shop?.name || 'Shop Inventory';
+            if (stock > 0) {
+                totalUnitsInStock += stock;
+                totalStockValue += (stock * sPrice);
+                totalCostValue += (stock * pPrice);
+            }
+            if (stock <= 0) {
+                outOfStockProducts.push({
+                    id: p.id,
+                    name: p.name,
+                    sku: p.sku,
+                    image_url: p.image_url,
+                    shop_id: p.shop_id,
+                    shopName: sName,
+                    current_stock: stock,
+                    reorder_level: reorder,
+                    sale_price: sPrice
+                });
+            }
+            else if (stock <= reorder) {
+                lowStockProducts.push({
+                    id: p.id,
+                    name: p.name,
+                    sku: p.sku,
+                    image_url: p.image_url,
+                    shop_id: p.shop_id,
+                    shopName: sName,
+                    current_stock: stock,
+                    reorder_level: reorder,
+                    sale_price: sPrice
+                });
+            }
+        }
+        const potentialStockMargin = totalStockValue - totalCostValue;
+        const invoiceCount = invoices?.length || 0;
+        const averageOrderValue = invoiceCount > 0 ? totalSales / invoiceCount : 0;
+        const marginPercentage = totalSales > 0 ? (realizedMargin / totalSales) * 100 : 0;
+        // Best Selling Products (Sorted by units sold and revenue)
+        const allProductSales = Object.values(productSalesMap);
+        const bestSellingProducts = [...allProductSales]
+            .sort((a, b) => b.unitsSold - a.unitsSold)
+            .slice(0, 10);
+        // Recent Invoices for the period
+        const recentInvoices = (invoices || []).slice(0, 10).map(inv => ({
+            id: inv.id,
+            invoice_number: inv.invoice_number,
+            date: inv.invoice_date || inv.created_at,
+            customerName: inv.customer?.name || 'Walk-in Customer',
+            customerPhone: inv.customer?.phone || '',
+            shopName: inv.shop?.name || 'PashuCentral Shop',
+            total_amount: Number(inv.total_amount || 0),
+            payment_mode: inv.payment_mode || 'cash',
+            status: inv.status || 'paid'
+        }));
+        // If Super Admin viewing all shops overview (no specific shopId), build per-shop cards
+        let shopsSummary = [];
+        if (role === 'super_admin' && !targetShopId) {
+            const { data: allShops } = await supabaseAdmin_1.supabaseAdmin.from('shops').select('*').order('name');
+            const { data: allProfiles } = await supabaseAdmin_1.supabaseAdmin.from('profiles').select('*');
+            shopsSummary = (allShops || []).map(s => {
+                const shopInvoices = (invoices || []).filter(inv => inv.shop_id === s.id);
+                const shopProducts = (products || []).filter(p => p.shop_id === s.id);
+                const sRevenue = shopInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
+                const sStockValue = shopProducts.reduce((sum, p) => sum + (Number(p.current_stock || 0) * Number(p.sale_price || 0)), 0);
+                const sOwner = allProfiles?.find(p => p.shop_id === s.id && p.role === 'shopkeeper');
+                return {
+                    id: s.id,
+                    name: s.name,
+                    state: s.state,
+                    phone: s.phone,
+                    gstin: s.gstin,
+                    address: s.address,
+                    totalRevenue: sRevenue,
+                    stockValue: sStockValue,
+                    invoiceCount: shopInvoices.length,
+                    productCount: shopProducts.length,
+                    ownerName: sOwner?.full_name || 'N/A'
+                };
+            });
+        }
+        // Target shop details if scoped to a specific shop
+        let targetShop = null;
+        if (targetShopId) {
+            const { data: s } = await supabaseAdmin_1.supabaseAdmin.from('shops').select('*').eq('id', targetShopId).single();
+            targetShop = s;
+        }
+        return res.json({
+            totalSales,
+            totalCollected,
+            outstanding,
+            totalStockValue,
+            totalCostValue,
+            potentialStockMargin,
+            realizedMargin,
+            averageOrderValue,
+            marginPercentage,
+            totalUnitsInStock,
+            outOfStockProducts,
+            lowStockProducts,
+            outOfStockCount: outOfStockProducts.length,
+            lowStockCount: lowStockProducts.length,
+            invoiceCount,
+            productCount: products?.length || 0,
+            bestSellingProducts,
+            allProductSales,
+            recentInvoices,
+            timeTrends,
+            granularity,
+            shopsSummary,
+            targetShop,
+            filterInfo: {
+                period,
+                startDate: startDateObj ? startDateObj.toISOString() : null,
+                endDate: endDateObj ? endDateObj.toISOString() : null
+            },
+            isSuperAdminOverview: role === 'super_admin' && !targetShopId
+        });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+// Get all registered shops (Super Admin only)
+router.get('/admin/shops', auth_1.requireAuth, async (req, res) => {
+    try {
+        const role = req.user?.role;
+        if (role !== 'super_admin') {
+            return res.status(403).json({ error: 'Access denied: super_admin role required' });
+        }
+        const { data: shops, error: sErr } = await supabaseAdmin_1.supabaseAdmin.from('shops').select('*');
+        if (sErr)
+            throw sErr;
+        const { data: profiles, error: pErr } = await supabaseAdmin_1.supabaseAdmin.from('profiles').select('*');
+        if (pErr)
+            throw pErr;
+        const { data: franchises, error: fErr } = await supabaseAdmin_1.supabaseAdmin.from('franchises').select('*');
+        if (fErr)
+            throw fErr;
+        // Enrich shops with owner profile and franchise
+        const enrichedShops = shops.map(shop => {
+            const shopOwner = profiles?.find(p => p.shop_id === shop.id && p.role === 'shopkeeper');
+            const franchise = franchises?.find(f => f.id === shop.franchise_id);
+            return {
+                ...shop,
+                owner: shopOwner || null,
+                franchise: franchise || null
+            };
+        });
+        return res.json(enrichedShops);
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+// Public registration helper to store shop, franchise and profile under service role
+router.post('/register-shop', async (req, res) => {
+    try {
+        const { userId, shopName, fullName, state, address, gstin, phone } = req.body;
+        if (!userId || !shopName || !fullName) {
+            return res.status(400).json({ error: 'Missing required registration fields' });
+        }
+        // 1. Insert Franchise
+        const { data: franchise, error: fErr } = await supabaseAdmin_1.supabaseAdmin
+            .from('franchises')
+            .insert({ name: shopName + ' Franchise', type: 'pashu_partner' })
+            .select()
+            .single();
+        if (fErr)
+            throw fErr;
+        // 2. Insert Shop
+        const { data: shop, error: sErr } = await supabaseAdmin_1.supabaseAdmin
+            .from('shops')
+            .insert({
+            franchise_id: franchise.id,
+            name: shopName,
+            state: state || 'Delhi',
+            address: address || '',
+            gstin: gstin || '',
+            phone: phone || '',
+            invoice_prefix: 'INV'
+        })
+            .select()
+            .single();
+        if (sErr)
+            throw sErr;
+        // 3. Upsert Profile
+        const { error: pErr } = await supabaseAdmin_1.supabaseAdmin.from('profiles').upsert({
+            id: userId,
+            full_name: fullName,
+            phone: phone || '',
+            role: 'shopkeeper',
+            shop_id: shop.id,
+            franchise_id: franchise.id
+        });
+        if (pErr)
+            throw pErr;
+        return res.json({ success: true, shopId: shop.id });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+// Get current user profile and shop details securely via Service Role
+router.get('/me', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const { data: prof, error: pErr } = await supabaseAdmin_1.supabaseAdmin
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+        if (pErr)
+            throw pErr;
+        // Get Auth user metadata for avatar
+        const { data: authUserData } = await supabaseAdmin_1.supabaseAdmin.auth.admin.getUserById(userId);
+        const avatarUrl = prof?.avatar_url || authUserData?.user?.user_metadata?.avatar_url || null;
+        let shop = null;
+        const shopId = prof?.shop_id || req.user?.shop_id;
+        if (shopId) {
+            const { data: sData } = await supabaseAdmin_1.supabaseAdmin
+                .from('shops')
+                .select('*')
+                .eq('id', shopId)
+                .maybeSingle();
+            shop = sData;
+        }
+        return res.json({
+            profile: prof ? { ...prof, avatar_url: avatarUrl } : null,
+            shop
+        });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+// Update user profile details & avatar
+router.put('/profile', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized: User not authenticated' });
+        }
+        const { full_name, phone, avatar_url } = req.body;
+        let updatedProfile = null;
+        // 1. Try updating with avatar_url in profiles table (if column exists)
+        try {
+            const updatePayload = {};
+            if (full_name !== undefined)
+                updatePayload.full_name = full_name;
+            if (phone !== undefined)
+                updatePayload.phone = phone;
+            if (avatar_url !== undefined)
+                updatePayload.avatar_url = avatar_url;
+            const { data, error } = await supabaseAdmin_1.supabaseAdmin
+                .from('profiles')
+                .update(updatePayload)
+                .eq('id', userId)
+                .select()
+                .single();
+            if (!error && data) {
+                updatedProfile = data;
+            }
+        }
+        catch (e) {
+            // Column might not exist yet; will fallback below
+        }
+        // 2. Fallback: Update only standard columns if avatar_url column is not yet in schema
+        if (!updatedProfile) {
+            const basicPayload = {};
+            if (full_name !== undefined)
+                basicPayload.full_name = full_name;
+            if (phone !== undefined)
+                basicPayload.phone = phone;
+            const { data, error } = await supabaseAdmin_1.supabaseAdmin
+                .from('profiles')
+                .update(basicPayload)
+                .eq('id', userId)
+                .select()
+                .single();
+            if (error) {
+                console.error("Profile update error:", error);
+            }
+            updatedProfile = data || { id: userId, full_name, phone };
+        }
+        // 3. Update Supabase Auth user_metadata for basic fields (never store large base64 to prevent 431 header bloat)
+        try {
+            const authMetaUpdate = {};
+            if (full_name !== undefined)
+                authMetaUpdate.full_name = full_name;
+            if (phone !== undefined)
+                authMetaUpdate.phone = phone;
+            if (avatar_url !== undefined && avatar_url.length < 200) {
+                authMetaUpdate.avatar_url = avatar_url;
+            }
+            if (Object.keys(authMetaUpdate).length > 0) {
+                await supabaseAdmin_1.supabaseAdmin.auth.admin.updateUserById(userId, {
+                    user_metadata: authMetaUpdate
+                });
+            }
+        }
+        catch (authErr) {
+            console.warn("Auth user_metadata update warning:", authErr);
+        }
+        return res.json({
+            ...updatedProfile,
+            avatar_url: avatar_url || updatedProfile?.avatar_url || null
+        });
+    }
+    catch (err) {
+        console.error("Profile route error:", err);
+        return res.status(500).json({ error: err.message || "Failed to update profile" });
+    }
+});
+// Update shop profile details & logo/storefront image
+router.put('/update-shop', auth_1.requireAuth, async (req, res) => {
+    try {
+        const shopId = req.user?.shop_id || req.body.shopId;
+        if (!shopId) {
+            return res.status(400).json({ error: 'Shop context missing' });
+        }
+        const { name, state, address, gstin, phone, logo_url, image_url } = req.body;
+        const updatePayload = {
+            name,
+            state: state || 'Delhi',
+            address: address || '',
+            gstin: gstin || '',
+            phone: phone || ''
+        };
+        if (logo_url !== undefined)
+            updatePayload.logo_url = logo_url;
+        if (image_url !== undefined)
+            updatePayload.image_url = image_url;
+        let updatedShop = null;
+        try {
+            const { data, error: sErr } = await supabaseAdmin_1.supabaseAdmin
+                .from('shops')
+                .update(updatePayload)
+                .eq('id', shopId)
+                .select()
+                .single();
+            if (!sErr && data) {
+                updatedShop = data;
+            }
+        }
+        catch (err) {
+            // Fallback without image_url if not in schema
+            delete updatePayload.image_url;
+            const { data } = await supabaseAdmin_1.supabaseAdmin
+                .from('shops')
+                .update(updatePayload)
+                .eq('id', shopId)
+                .select()
+                .single();
+            updatedShop = data;
+        }
+        return res.json(updatedShop || { id: shopId, ...updatePayload });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+exports.default = router;

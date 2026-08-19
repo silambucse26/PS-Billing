@@ -1,0 +1,1032 @@
+import { useEffect, useState, useRef } from "react";
+import { api } from "../lib/api";
+import { supabase } from "../lib/supabaseClient";
+import Sidebar from "../components/Sidebar";
+import { 
+  Store, Search, Plus, X, Barcode, Check, Upload, Download, Sparkles, ArrowLeft, Package, Trash2, AlertTriangle
+} from "lucide-react";
+
+export default function AdminShops() {
+  const [shops, setShops] = useState<any[]>([]);
+  const [loadingShops, setLoadingShops] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Drill-down State
+  const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
+  const [selectedShopName, setSelectedShopName] = useState<string>("");
+  const [products, setProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [search, setSearch] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<any | null>(null);
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [tempSalePrice, setTempSalePrice] = useState("");
+
+  // Add Product Form State (Admin managing selected shop inventory)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
+  const [barcode, setBarcode] = useState("");
+  const [mrp, setMrp] = useState<number | "">("");
+  const [purchasePrice, setPurchasePrice] = useState<number | "">("");
+  const [salePrice, setSalePrice] = useState<number | "">("");
+  const [gstRate, setGstRate] = useState<number>(18);
+  const [hsnCode, setHsnCode] = useState("");
+  const [unit, setUnit] = useState("pcs");
+  const [currentStock, setCurrentStock] = useState<number | "">("");
+  const [reorderLevel, setReorderLevel] = useState<number>(5);
+  const [imageUrl, setImageUrl] = useState("");
+
+  const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchShops();
+  }, []);
+
+  useEffect(() => {
+    if (selectedShopId) {
+      fetchShopProducts(selectedShopId);
+    }
+  }, [selectedShopId]);
+
+  const fetchShops = () => {
+    setLoadingShops(true);
+    api.get("/reports/admin/shops")
+      .then((res) => setShops(res))
+      .catch((err) => {
+        console.error(err);
+        setError(err.message || "Failed to load shops");
+      })
+      .finally(() => setLoadingShops(false));
+  };
+
+  const fetchShopProducts = async (shopId: string) => {
+    setLoadingProducts(true);
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("shop_id", shopId);
+    if (error) {
+      console.error("Error fetching shop products:", error);
+    }
+    if (data) setProducts(data);
+    setLoadingProducts(false);
+  };
+
+  const handleDeleteProduct = (productId: string) => {
+    setDeleteConfirmId(productId);
+  };
+
+  const confirmDeleteProduct = async () => {
+    if (!deleteConfirmId) return;
+    try {
+      // 1. Delete associated stock movements first to prevent foreign key violations
+      await supabase
+        .from("stock_movements")
+        .delete()
+        .eq("product_id", deleteConfirmId);
+
+      // 2. Delete the product itself
+      const { error: delErr } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", deleteConfirmId);
+
+      if (delErr) throw delErr;
+
+      setSuccessMsg("Product deleted successfully.");
+      setTimeout(() => setSuccessMsg(null), 3000);
+      
+      if (selectedShopId) fetchShopProducts(selectedShopId);
+    } catch (err: any) {
+      setError(err.message || "Failed to delete product");
+    } finally {
+      setDeleteConfirmId(null);
+    }
+  };
+
+  const handleSaveSellingPrice = async () => {
+    if (!viewingProduct) return;
+    const newPrice = Number(tempSalePrice);
+    if (isNaN(newPrice) || newPrice < 0) {
+      alert("Please enter a valid price.");
+      return;
+    }
+
+    try {
+      const marginVal = newPrice - Number(viewingProduct.purchase_price || 0);
+      const marginPct = newPrice > 0 ? (marginVal / newPrice) * 100 : 0;
+
+      const { error: updErr } = await supabase
+        .from("products")
+        .update({
+          sale_price: newPrice,
+          margin_value: marginVal,
+          margin_percent: marginPct
+        })
+        .eq("id", viewingProduct.id);
+
+      if (updErr) throw updErr;
+
+      setViewingProduct({
+        ...viewingProduct,
+        sale_price: newPrice,
+        margin_value: marginVal,
+        margin_percent: marginPct
+      });
+      
+      setSuccessMsg("Selling Price updated successfully.");
+      setTimeout(() => setSuccessMsg(null), 3000);
+      
+      if (selectedShopId) fetchShopProducts(selectedShopId);
+      setIsEditingPrice(false);
+    } catch (err: any) {
+      alert(err.message || "Failed to update selling price");
+    }
+  };
+
+  const handleSelectShop = (shopId: string, shopName: string) => {
+    setSelectedShopId(shopId);
+    setSelectedShopName(shopName);
+    setError(null);
+  };
+
+  const handleBackToShops = () => {
+    setSelectedShopId(null);
+    setSelectedShopName("");
+    setProducts([]);
+    setError(null);
+  };
+
+  const autoGenerateIdentifiers = () => {
+    const randomSku = "SKU-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    setSku(randomSku);
+
+    let randomBarcode = "890";
+    for (let i = 0; i < 9; i++) {
+      randomBarcode += Math.floor(Math.random() * 10).toString();
+    }
+    setBarcode(randomBarcode);
+  };
+
+  const handleOpenModal = () => {
+    setError(null);
+    setName("");
+    setMrp("");
+    setPurchasePrice("");
+    setSalePrice("");
+    setGstRate(18);
+    setHsnCode("");
+    setUnit("pcs");
+    setCurrentStock("");
+    setReorderLevel(5);
+    setImageUrl("");
+    autoGenerateIdentifiers();
+    setIsModalOpen(true);
+  };
+
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedShopId) return;
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const calcMrp = Number(mrp) || 0;
+      const calcPurchase = Number(purchasePrice) || 0;
+      const calcSale = Number(salePrice) || 0;
+      const marginVal = calcSale - calcPurchase;
+      const marginPct = calcSale > 0 ? (marginVal / calcSale) * 100 : 0;
+
+      const { error: insErr } = await supabase.from("products").insert({
+        shop_id: selectedShopId,
+        name,
+        sku: sku || null,
+        barcode: barcode || null,
+        mrp: calcMrp,
+        purchase_price: calcPurchase,
+        sale_price: calcSale,
+        margin_value: marginVal,
+        margin_percent: marginPct,
+        gst_rate: Number(gstRate) || 0,
+        hsn_code: hsnCode || null,
+        unit: unit || "pcs",
+        opening_stock: Number(currentStock) || 0,
+        current_stock: Number(currentStock) || 0,
+        reorder_level: Number(reorderLevel) || 0,
+        image_url: imageUrl || null
+      });
+
+      if (insErr) throw insErr;
+
+      setIsModalOpen(false);
+      setSuccessMsg("Product added successfully!");
+      setTimeout(() => setSuccessMsg(null), 3000);
+      fetchShopProducts(selectedShopId);
+    } catch (err: any) {
+      setError(err.message || "Failed to add product");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // CSV Template download
+  const downloadCsvTemplate = () => {
+    const headers = "Name,SKU (Leave blank to auto-generate),Barcode (Leave blank to auto-generate),MRP,Purchase Price,Selling Price,GST Rate,HSN Code,Unit,Stock,Reorder Level,Image URL\n";
+    const sampleRow = 'Demo Mastitis Test Kit,, ,250.00,150.00,200.00,18,3822,pcs,50,5,https://placehold.co/100x100.png\n';
+    
+    const blob = new Blob([headers + sampleRow], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "bulk_products_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Bulk upload parser for selected shop
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedShopId) return;
+
+    setError(null);
+    setLoadingProducts(true);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        if (!text) throw new Error("Empty CSV file");
+
+        const lines = text.split(/\r\n|\n|\r/).filter(line => line.trim() !== "");
+        if (lines.length <= 1) throw new Error("CSV does not contain any product data rows.");
+
+        const parsedProducts: any[] = [];
+
+        // Auto-detect separator
+        const header = lines[0];
+        let separator = ",";
+        if (header.includes(";")) separator = ";";
+        else if (header.includes("\t")) separator = "\t";
+
+        const parseCsvLine = (line: string) => {
+          const result = [];
+          let current = "";
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === separator && !inQuotes) {
+              result.push(current.trim());
+              current = "";
+            } else {
+              current += char;
+            }
+          }
+          result.push(current.trim());
+          return result;
+        };
+
+        for (let i = 1; i < lines.length; i++) {
+          const columns = parseCsvLine(lines[i]);
+          if (columns.length < 2 || !columns[0]) continue;
+
+          const productName = columns[0];
+          
+          let productSku = columns[1];
+          if (!productSku) {
+            productSku = "SKU-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+          }
+
+          let productBarcode = columns[2];
+          if (!productBarcode) {
+            productBarcode = "890";
+            for (let j = 0; j < 9; j++) {
+              productBarcode += Math.floor(Math.random() * 10).toString();
+            }
+          }
+
+          const productMrp = Number(columns[3]) || 0;
+          const productPurchase = Number(columns[4]) || 0;
+          const productSale = Number(columns[5]) || 0;
+          const productGst = Number(columns[6]) || 18;
+          const productHsn = columns[7] || null;
+          const productUnit = columns[8] || "pcs";
+          const productStock = Number(columns[9]) || 0;
+          const productReorder = Number(columns[10]) || 5;
+          const productImage = columns[11] || null;
+
+          const productMarginVal = productSale - productPurchase;
+          const productMarginPct = productSale > 0 ? (productMarginVal / productSale) * 100 : 0;
+
+          parsedProducts.push({
+            shop_id: selectedShopId,
+            name: productName,
+            sku: productSku,
+            barcode: productBarcode,
+            mrp: productMrp,
+            purchase_price: productPurchase,
+            sale_price: productSale,
+            margin_value: productMarginVal,
+            margin_percent: productMarginPct,
+            gst_rate: productGst,
+            hsn_code: productHsn,
+            unit: productUnit,
+            opening_stock: productStock,
+            current_stock: productStock,
+            reorder_level: productReorder,
+            image_url: productImage
+          });
+        }
+
+        if (parsedProducts.length === 0) {
+          throw new Error("No valid products parsed from CSV.");
+        }
+
+        const { error: bulkErr } = await supabase.from("products").insert(parsedProducts);
+        if (bulkErr) throw bulkErr;
+
+        setSuccessMsg(`Successfully uploaded ${parsedProducts.length} products to shop inventory!`);
+        setTimeout(() => setSuccessMsg(null), 3500);
+        fetchShopProducts(selectedShopId);
+      } catch (err: any) {
+        setError(err.message || "Failed to parse CSV upload.");
+        setLoadingProducts(false);
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <div className="flex flex-col lg:flex-row bg-gray-50 min-h-screen text-gray-900 animate-fade-in">
+      <Sidebar />
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto min-w-0">
+        <div className="max-w-6xl mx-auto space-y-6">
+          
+          {selectedShopId ? (
+            /* DRILL-DOWN SHOP PRODUCT INVENTORY VIEW */
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={handleBackToShops}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
+                >
+                  <ArrowLeft className="w-4 h-4 text-green-600" />
+                  Back to Shops List
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={downloadCsvTemplate}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
+                  >
+                    <Download className="w-4 h-4 text-green-600" />
+                    Template
+                  </button>
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
+                  >
+                    <Upload className="w-4 h-4 text-green-600" />
+                    Bulk CSV
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleCsvUpload}
+                    accept=".csv"
+                    className="hidden"
+                  />
+
+                  <button
+                    onClick={handleOpenModal}
+                    className="flex items-center justify-center gap-2 px-5 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-500 rounded-xl transition-all shadow-md hover:shadow-green-100 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Product
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                  <Package className="w-8 h-8 text-green-600" />
+                  Inventory for {selectedShopName}
+                </h1>
+                <p className="text-xs text-gray-500 mt-1">Super Admin product catalog override panel.</p>
+              </div>
+
+              {successMsg && (
+                <div className="p-4 text-sm text-green-800 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  {successMsg}
+                </div>
+              )}
+
+              {error && (
+                <div className="p-4 text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl">
+                  {error}
+                </div>
+              )}
+
+              {/* Search bar */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+                <Search className="w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search products in this shop's stock..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
+                />
+              </div>
+
+              {loadingProducts ? (
+                <div className="text-gray-500 font-medium">Loading shop products catalog...</div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-sm font-semibold">
+                          <th className="py-4 px-6">Image</th>
+                          <th className="py-4 px-6">Product ID / SKU</th>
+                          <th className="py-4 px-6">Name</th>
+                          <th className="py-4 px-6">Barcode</th>
+                          <th className="py-4 px-6 text-right">MRP</th>
+                          <th className="py-4 px-6 text-right">Purchase Price</th>
+                          <th className="py-4 px-6 text-right">Selling Price</th>
+                          <th className="py-4 px-6 text-right">Margin (Val / %)</th>
+                          <th className="py-4 px-6 text-center">GST %</th>
+                          <th className="py-4 px-6 text-center">Stock</th>
+                          <th className="py-4 px-6 text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {products
+                          .filter((p) => 
+                            p.name.toLowerCase().includes(search.toLowerCase()) ||
+                            (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
+                            (p.barcode && p.barcode.includes(search))
+                          )
+                          .length === 0 ? (
+                          <tr>
+                            <td colSpan={11} className="py-8 px-6 text-center text-gray-500">
+                              No products found in this shop's inventory.
+                            </td>
+                          </tr>
+                        ) : (
+                          products
+                            .filter((p) => 
+                              p.name.toLowerCase().includes(search.toLowerCase()) ||
+                              (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
+                              (p.barcode && p.barcode.includes(search))
+                            )
+                            .map((p) => {
+                              const marginValue = Number(p.sale_price || 0) - Number(p.purchase_price || 0);
+                              const marginPercent = p.sale_price > 0 ? (marginValue / Number(p.sale_price)) * 100 : 0;
+
+                              return (
+                                <tr 
+                                  key={p.id} 
+                                  onClick={() => setViewingProduct(p)}
+                                  className="text-sm hover:bg-gray-150 transition-colors cursor-pointer"
+                                >
+                                  <td className="py-4 px-6">
+                                    {p.image_url ? (
+                                      <img
+                                        src={p.image_url}
+                                        alt={p.name}
+                                        className="w-10 h-10 object-cover rounded-lg border border-gray-100"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).src = "https://placehold.co/100x100.png?text=Product";
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="w-10 h-10 bg-gray-100 text-gray-400 rounded-lg flex items-center justify-center border border-gray-200">
+                                        <Package className="w-5 h-5" />
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-4 px-6 font-mono font-semibold text-gray-700">{p.sku || "N/A"}</td>
+                                  <td className="py-4 px-6 font-bold text-gray-900">{p.name}</td>
+                                  <td className="py-4 px-6 text-gray-600 flex items-center gap-1 mt-3">
+                                    <Barcode className="w-4 h-4 text-gray-400" />
+                                    {p.barcode || "N/A"}
+                                  </td>
+                                  <td className="py-4 px-6 text-right font-semibold text-gray-900">₹{p.mrp ? Number(p.mrp).toFixed(2) : "0.00"}</td>
+                                  <td className="py-4 px-6 text-right text-gray-600">₹{p.purchase_price ? Number(p.purchase_price).toFixed(2) : "0.00"}</td>
+                                  <td className="py-4 px-6 text-right text-gray-950 font-bold">₹{p.sale_price ? Number(p.sale_price).toFixed(2) : "0.00"}</td>
+                                  
+                                  <td className="py-4 px-6 text-right font-semibold text-green-700">
+                                    <div>₹{marginValue.toFixed(2)}</div>
+                                    <div className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-150 inline-block mt-0.5">
+                                      {marginPercent.toFixed(1)}%
+                                    </div>
+                                  </td>
+
+                                  <td className="py-4 px-6 text-center text-gray-600">{p.gst_rate}%</td>
+                                  <td className="py-4 px-6 text-center">
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                                      p.current_stock <= p.reorder_level
+                                        ? "bg-red-50 text-red-700 border-red-100"
+                                        : "bg-green-50 text-green-700 border-green-100"
+                                    }`}>
+                                      {p.current_stock} {p.unit || "pcs"}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteProduct(p.id);
+                                      }}
+                                      className="p-2 text-red-600 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center border border-transparent hover:border-red-100"
+                                      title="Delete Product"
+                                    >
+                                      <Trash2 className="w-4.5 h-4.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* MAIN REGISTERED SHOPS OVERVIEW LIST */
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                  <Store className="w-8 h-8 text-green-600" />
+                  Registered Shops List (Admin)
+                </h1>
+                <p className="text-sm text-gray-500 mt-1">Select a shop to manage its inventory and review details.</p>
+              </div>
+
+              {error && (
+                <div className="p-4 mb-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">
+                  {error}
+                </div>
+              )}
+
+              {loadingShops ? (
+                <div className="text-gray-500 font-medium">Loading shops list...</div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-sm font-semibold">
+                          <th className="py-4 px-6">Shop Name</th>
+                          <th className="py-4 px-6">Franchise</th>
+                          <th className="py-4 px-6">Owner Name</th>
+                          <th className="py-4 px-6">Phone</th>
+                          <th className="py-4 px-6">State</th>
+                          <th className="py-4 px-6">GSTIN</th>
+                          <th className="py-4 px-6">Address</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {shops.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-8 px-6 text-center text-gray-500">
+                              No shops registered yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          shops.map((shop) => (
+                            <tr key={shop.id} className="text-sm hover:bg-gray-50 transition-colors">
+                              <td className="py-4 px-6">
+                                <button
+                                  onClick={() => handleSelectShop(shop.id, shop.name)}
+                                  className="font-bold text-green-700 hover:text-green-600 hover:underline transition-colors text-left cursor-pointer"
+                                >
+                                  {shop.name}
+                                </button>
+                              </td>
+                              <td className="py-4 px-6 text-gray-600">{shop.franchise?.name || "N/A"}</td>
+                              <td className="py-4 px-6 font-medium text-gray-800">{shop.owner?.full_name || "N/A"}</td>
+                              <td className="py-4 px-6 text-gray-600">{shop.phone || shop.owner?.phone || "N/A"}</td>
+                              <td className="py-4 px-6 text-gray-600">{shop.state || "N/A"}</td>
+                              <td className="py-4 px-6 font-mono text-gray-600">{shop.gstin || "N/A"}</td>
+                              <td className="py-4 px-6 text-gray-600 truncate max-w-xs">{shop.address || "N/A"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Modal - Admin Product Creation specific to selected Shop */}
+      {isModalOpen && selectedShopId && (
+        <div className="fixed inset-0 bg-black/45 flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-2xl overflow-hidden">
+            <div className="flex items-center justify-between bg-gray-50 px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Plus className="w-5 h-5 text-green-600" />
+                Add Product to {selectedShopName} Inventory
+              </h2>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-150 transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddProduct} className="p-6 space-y-4">
+              {error && (
+                <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">
+                  {error}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Product Name *</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                    placeholder="e.g. Calcium Supplement 5L"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-700">Product ID / SKU *</label>
+                    <button
+                      type="button"
+                      onClick={() => setSku("SKU-" + Math.random().toString(36).substring(2, 8).toUpperCase())}
+                      className="text-xs text-green-600 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" /> Auto
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={sku}
+                    onChange={(e) => setSku(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                    placeholder="e.g. FEED-CALC-5L"
+                    required
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-700">Barcode</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        let bc = "890";
+                        for (let j = 0; j < 9; j++) bc += Math.floor(Math.random() * 10).toString();
+                        setBarcode(bc);
+                      }}
+                      className="text-xs text-green-600 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" /> Auto
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                    placeholder="Scan or generate barcode"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 col-span-1 md:col-span-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">MRP *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={mrp}
+                      onChange={(e) => setMrp(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Purchase Price *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={purchasePrice}
+                      onChange={(e) => setPurchasePrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Selling Price *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={salePrice}
+                      onChange={(e) => setSalePrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">GST Rate (%) *</label>
+                  <select
+                    value={gstRate}
+                    onChange={(e) => setGstRate(Number(e.target.value))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                  >
+                    <option value={0}>0% (Exempt)</option>
+                    <option value={5}>5%</option>
+                    <option value={12}>12%</option>
+                    <option value={18}>18%</option>
+                    <option value={28}>28%</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Unit of Measurement</label>
+                  <input
+                    type="text"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                    placeholder="pcs, bottles, bags"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Current Stock *</label>
+                  <input
+                    type="number"
+                    value={currentStock}
+                    onChange={(e) => setCurrentStock(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                    placeholder="0"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Reorder Alert Level</label>
+                  <input
+                    type="number"
+                    value={reorderLevel}
+                    onChange={(e) => setReorderLevel(Number(e.target.value))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">HSN Code</label>
+                  <input
+                    type="text"
+                    value={hsnCode}
+                    onChange={(e) => setHsnCode(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                    placeholder="e.g. 2309"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Product Image URL</label>
+                  <input
+                    type="text"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 font-medium text-gray-900"
+                    placeholder="https://image-link.png"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded-xl shadow-md cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  {submitting ? "Adding..." : "Add Product"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Custom Animated Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-150 w-full max-w-md overflow-hidden transform transition-all duration-300 scale-100 p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-red-50 text-red-600 rounded-full">
+                <AlertTriangle className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Delete Product</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Confirm permanent removal</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Are you sure you want to delete this product from the inventory? This action is permanent and cannot be undone.
+            </p>
+
+            <div className="flex gap-3 justify-end pt-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-4 py-2.5 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer transition-all"
+              >
+                No, Keep it
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteProduct}
+                className="px-4 py-2.5 text-xs font-bold text-white bg-red-600 hover:bg-red-500 rounded-xl cursor-pointer shadow-md shadow-red-100 transition-all"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Product Details Modal */}
+      {viewingProduct && (
+        <div className="fixed inset-0 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-150 w-full max-w-lg overflow-hidden p-6 space-y-6 transform transition-all duration-300 scale-100 animate-scale-in">
+            <div className="flex items-start justify-between border-b border-gray-100 pb-4">
+              <div className="flex items-center gap-3">
+                {viewingProduct.image_url ? (
+                  <img
+                    src={viewingProduct.image_url}
+                    alt={viewingProduct.name}
+                    className="w-14 h-14 object-cover rounded-xl border border-gray-200"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "https://placehold.co/100x100.png?text=Product";
+                    }}
+                  />
+                ) : (
+                  <div className="w-14 h-14 bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center border border-gray-200">
+                    <Package className="w-6 h-6" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 leading-tight">{viewingProduct.name}</h3>
+                  <span className="inline-block text-xs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded mt-1 border border-gray-150">
+                    {viewingProduct.sku || "NO SKU"}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingProduct(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl cursor-pointer transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 space-y-1">
+                <span className="text-xs font-bold text-gray-500 block">Identifier / Barcode</span>
+                <span className="font-semibold text-gray-800 flex items-center gap-1">
+                  <Barcode className="w-4 h-4 text-gray-400" />
+                  {viewingProduct.barcode || "N/A"}
+                </span>
+              </div>
+              <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 space-y-1">
+                <span className="text-xs font-bold text-gray-500 block">HSN & GST</span>
+                <span className="font-semibold text-gray-800">
+                  HSN: {viewingProduct.hsn_code || "N/A"} | GST: {viewingProduct.gst_rate}%
+                </span>
+              </div>
+
+              <div className="col-span-2 grid grid-cols-3 gap-2">
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center">
+                  <span className="text-xs font-bold text-gray-500 block">MRP</span>
+                  <span className="font-bold text-gray-900 text-base">₹{Number(viewingProduct.mrp || 0).toFixed(2)}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center">
+                  <span className="text-xs font-bold text-gray-500 block">Purchase Price</span>
+                  <span className="font-bold text-gray-700 text-base">₹{Number(viewingProduct.purchase_price || 0).toFixed(2)}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-center relative flex flex-col justify-center items-center">
+                  <span className="text-xs font-bold text-gray-500 block">Selling Price</span>
+                  {isEditingPrice ? (
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={tempSalePrice}
+                        onChange={(e) => setTempSalePrice(e.target.value)}
+                        className="w-20 text-center bg-white border border-gray-300 rounded p-1 text-sm text-gray-900 focus:outline-none focus:border-green-600 font-bold"
+                      />
+                      <div className="flex gap-1 justify-center w-full">
+                        <button
+                          type="button"
+                          onClick={handleSaveSellingPrice}
+                          className="bg-green-650 hover:bg-green-600 bg-green-650 bg-green-600 text-white rounded px-2 py-0.5 text-xxs cursor-pointer font-bold transition-colors"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingPrice(false)}
+                          className="bg-gray-200 hover:bg-gray-300 text-gray-700 rounded px-2 py-0.5 text-xxs cursor-pointer font-bold transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center">
+                      <span className="font-bold text-green-700 text-base">₹{Number(viewingProduct.sale_price || 0).toFixed(2)}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTempSalePrice(viewingProduct.sale_price.toString());
+                          setIsEditingPrice(true);
+                        }}
+                        className="text-xxs text-green-600 font-bold hover:underline cursor-pointer mt-0.5"
+                      >
+                        Edit Price
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="col-span-2 bg-green-50/50 p-4 rounded-xl border border-green-100 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-green-700 block">Computed Profit Margin</span>
+                  <span className="text-lg font-bold text-green-950">
+                    ₹{((viewingProduct.margin_value !== undefined ? Number(viewingProduct.margin_value) : (Number(viewingProduct.sale_price || 0) - Number(viewingProduct.purchase_price || 0)))).toFixed(2)}
+                  </span>
+                </div>
+                <span className="px-3 py-1 bg-green-600 text-white rounded-full text-sm font-bold shadow-md shadow-green-100">
+                  {((viewingProduct.margin_percent !== undefined ? Number(viewingProduct.margin_percent) : (viewingProduct.sale_price > 0 ? ((Number(viewingProduct.sale_price || 0) - Number(viewingProduct.purchase_price || 0)) / Number(viewingProduct.sale_price)) * 100 : 0))).toFixed(1)}%
+                </span>
+              </div>
+
+              <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100 space-y-1">
+                <span className="text-xs font-bold text-gray-500 block">Current Stock</span>
+                <span className={`text-base font-bold ${
+                  viewingProduct.current_stock <= viewingProduct.reorder_level
+                    ? "text-red-600"
+                    : "text-green-700"
+                }`}>
+                  {viewingProduct.current_stock} {viewingProduct.unit || "pcs"}
+                </span>
+              </div>
+              <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-150 space-y-1">
+                <span className="text-xs font-bold text-gray-500 block">Stock Details</span>
+                <span className="text-gray-700 font-medium">
+                  Min Alert Level: {viewingProduct.reorder_level || 5}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setViewingProduct(null)}
+                className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl cursor-pointer transition-all"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
