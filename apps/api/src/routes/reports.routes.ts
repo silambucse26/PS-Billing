@@ -4,6 +4,101 @@ import { supabaseAdmin } from '../config/supabaseAdmin';
 
 const router = Router();
 
+// Helper to seed default products for a shop if it has 0 products
+async function seedDefaultProducts(shopId: string) {
+  try {
+    const { count, error: cErr } = await supabaseAdmin
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('shop_id', shopId);
+
+    if (cErr) {
+      console.error('Error checking products count for seeding:', cErr);
+      return;
+    }
+
+    if (count !== null && count > 0) {
+      return; // Products already exist
+    }
+
+    // Fetch or create General category
+    let categoryId: string | null = null;
+    const { data: cat } = await supabaseAdmin
+      .from('categories')
+      .select('id')
+      .eq('name', 'General')
+      .maybeSingle();
+
+    if (cat) {
+      categoryId = cat.id;
+    } else {
+      const { data: newCat } = await supabaseAdmin
+        .from('categories')
+        .insert({ name: 'General' })
+        .select('id')
+        .single();
+      if (newCat) {
+        categoryId = newCat.id;
+      }
+    }
+
+    const defaultProducts = [
+      { name: "Chimertech CMT Kit 500mL with Paddle", mrp: 599, purchase_price: 300, sale_price: 450, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/500mlCMTwithpaddle.jpg?v=1779701780" },
+      { name: "Dip Cup", mrp: 200, purchase_price: 100, sale_price: 150, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/DipCup1unit8.avif?v=1775634547" },
+      { name: "FineKine 1Kg", mrp: 699, purchase_price: 300, sale_price: 600, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/FineKine_1_kg_0.png?v=1779102161" },
+      { name: "FineKine 5Kg with Dip Cup Combo", mrp: 3699, purchase_price: 2000, sale_price: 3200, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/FineKine_5Kg_with_Dip_Cup_Combo.png?v=1779879753" },
+      { name: "Iogiene 1Kg with Dip Cup Combo", mrp: 799, purchase_price: 370, sale_price: 650, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Iogiene1KgwithDipCupCombo9.webp?v=1775629300" },
+      { name: "Iogiene 5Kg with Dip Cup Combo", mrp: 3499, purchase_price: 1900, sale_price: 3000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Iogiene5KgwithDipCupCombo-0.webp?v=1775629790" },
+      { name: "MooFoam 1Kg with Dip Cup Combo", mrp: 699, purchase_price: 380, sale_price: 550, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/MooFoam1KgwithDipCupCombo.webp?v=1775631375" },
+      { name: "MastoVeda 200ml", mrp: 699, purchase_price: 300, sale_price: 525, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Mastoveda_Spray_200ml.png?v=1779104160" },
+      { name: "Quadmastest Pro", mrp: 27500, purchase_price: 16000, sale_price: 23000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Untitled_design_19.png?v=1777432292" },
+      { name: "Tic Tick Tick 200ml Reagent", mrp: 699, purchase_price: 300, sale_price: 420, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/TicTickTic200mlSpray_71290546-8365-4f92-9c26-aed407707759.webp?v=1775635586" },
+      { name: "PregKine Bovine Pregnancy Rapid Test Kit", mrp: 519, purchase_price: 180, sale_price: 250, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/PregKineBovinePregnancyRapidTest-1Test1Test.jpg?v=1775648231" },
+      { name: "Nsure Aqua (Pack of 50)", mrp: 1500, purchase_price: 1000, sale_price: 1400, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Nsure_Aqua_Pack_of_100.avif?v=1779107907" },
+      { name: "Off-Horn Dehorning Paste", mrp: 250, purchase_price: 100, sale_price: 200, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/D-Horn_Dehorning_Paste_3g_for_Calves_Chimertech.png?v=1779106039" },
+      { name: "NutraKine D-Wormer 100ml", mrp: 249, purchase_price: 90, sale_price: 185, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_D-Wormer_100_ml.png?v=1779106048" },
+      { name: "NutraKine Mineral Mixture - Mineral Max 1Kg", mrp: 200, purchase_price: 150, sale_price: 180, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/MineralMax.png?v=1779944665" },
+      { name: "NutraKine Probiotics - ProBos+ 500g", mrp: 280, purchase_price: 180, sale_price: 250, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Probos_1.png?v=1779945063" },
+      { name: "NutraKine Calcdex 5L", mrp: 649, purchase_price: 440, sale_price: 550, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_Calcdex_1L.png?v=1779105504" },
+      { name: "AI Digital Gun", mrp: 33000, purchase_price: 25000, sale_price: 28000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Digitalartificialinseminationgunwithcameraforcattleandhorse_f42b64af-90f5-4738-9892-22a51b2c7464.jpg?v=1775724636" },
+      { name: "Estrus Gun", mrp: 9500, purchase_price: 6000, sale_price: 7500, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/EstrusGunCattle.webp?v=1775649104" },
+      { name: "LN2 Container 3Ltr", mrp: 11000, purchase_price: 8000, sale_price: 9000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Portable_Liquid_Nitrogen_LN2_Container_for_Cattle_Semen_Storage_2_Litre.webp?v=1779108459" }
+    ];
+
+    const insertPayload = defaultProducts.map((p, index) => {
+      const cleanName = p.name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+      const sku = `${cleanName}-${100 + index}`;
+      return {
+        shop_id: shopId,
+        name: p.name,
+        sku: sku,
+        barcode: '',
+        mrp: p.mrp,
+        purchase_price: p.purchase_price,
+        sale_price: p.sale_price,
+        gst_rate: 18.00,
+        hsn_code: '',
+        unit: p.unit,
+        opening_stock: 0,
+        current_stock: 0,
+        reorder_level: 5,
+        category_id: categoryId,
+        image_url: p.image_url
+      };
+    });
+
+    const { error: insErr } = await supabaseAdmin
+      .from('products')
+      .insert(insertPayload);
+
+    if (insErr) {
+      console.error('Error seeding default products:', insErr);
+    }
+  } catch (err) {
+    console.error('Unexpected error seeding default products:', err);
+  }
+}
+
 // Get current user's profile and shop context safely from backend
 router.get('/me', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
@@ -48,6 +143,11 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response) => {
         .eq('id', enrichedProfile.shop_id)
         .maybeSingle();
       shop = s;
+
+      if (shop) {
+        // Automatically check and seed default products if this shop has 0 products
+        await seedDefaultProducts(shop.id);
+      }
     }
 
     return res.json({

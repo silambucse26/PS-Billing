@@ -13,21 +13,13 @@ const restock_routes_1 = __importDefault(require("./routes/restock.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT || 5000;
-// Universal CORS handler
 app.use((0, cors_1.default)({
-    origin: '*',
+    origin: true,
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
+app.options('*', (0, cors_1.default)());
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
 // Routes
@@ -42,10 +34,9 @@ app.get('/health', (req, res) => {
 app.use((req, res) => {
     res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
 });
-// Global Error Handler (always returns JSON with CORS headers)
+// Global Error Handler (always returns JSON, never HTML)
 app.use((err, req, res, next) => {
     console.error('Unhandled API Error:', err);
-    res.header('Access-Control-Allow-Origin', '*');
     res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 app.listen(port, () => {
