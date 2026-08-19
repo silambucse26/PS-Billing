@@ -5,7 +5,10 @@ import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import Sidebar from "../components/Sidebar";
-import { Package, Plus, Minus, Trash2, ShoppingCart, Search } from "lucide-react";
+import { 
+  Package, Plus, Minus, Trash2, ShoppingCart, Search, 
+  MessageSquare, Download, CheckCircle, Send, Check
+} from "lucide-react";
 
 export default function Billing() {
   const { shop } = useAuth();
@@ -17,6 +20,11 @@ export default function Billing() {
   const [paymentMode, setPaymentMode] = useState("cash");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Success Modal state for 1-click WhatsApp share
+  const [createdInvoice, setCreatedInvoice] = useState<any | null>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [copiedWA, setCopiedWA] = useState(false);
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -173,20 +181,27 @@ export default function Billing() {
         paidAmount: totals.totalAmount
       });
 
-      // Fetch PDF with auth header
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
-      const pdfRes = await fetch(`http://localhost:5000/api/invoices/${res.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token || ""}` }
-      });
-      if (!pdfRes.ok) {
-        const errData = await pdfRes.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to download invoice PDF");
+      const invId = res.id || res.invoiceId;
+      const invNum = res.invoice_number || res.invoiceNumber || "INV-NEW";
+
+      const createdRecord = {
+        id: invId,
+        invoice_number: invNum,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        paymentMode,
+        totalAmount: totals.totalAmount,
+        cartItems: [...cart],
+        date: new Date()
+      };
+
+      setCreatedInvoice(createdRecord);
+
+      // Auto trigger WhatsApp if customer phone exists
+      if (customerPhone.trim().length >= 10) {
+        handleShareWhatsApp(createdRecord);
       }
-      const pdfBlob = await pdfRes.blob();
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, "_blank");
-      
+
       // Clear forms
       setCart([]);
       setCustomerName("");
@@ -205,6 +220,90 @@ export default function Billing() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatWhatsAppMessage = (inv: any) => {
+    const shopName = shop?.name || "Pashu Central Center";
+    const shopPhone = shop?.phone ? `📞 Shop Contact: ${shop.phone}\n` : "";
+    const dateStr = new Date(inv.date || new Date()).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    });
+    const custName = inv.customerName || "Valued Customer";
+    const amount = Number(inv.totalAmount || 0).toFixed(2);
+    const paymentMode = (inv.paymentMode || "Cash").toUpperCase();
+
+    let itemsText = "";
+    if (inv.cartItems && Array.isArray(inv.cartItems) && inv.cartItems.length > 0) {
+      itemsText = "\n📦 *Items Purchased:*\n" + inv.cartItems.map((item: any) => {
+        const qty = item.qty || 1;
+        const price = Number(item.unitPrice || 0).toFixed(2);
+        const lineTotal = (qty * Number(price)).toFixed(2);
+        return `• ${item.name} (${qty} ${item.unit || 'pcs'} x ₹${price}) = ₹${lineTotal}`;
+      }).join("\n") + "\n";
+    }
+
+    return `🐾 *${shopName.toUpperCase()}*\n` +
+      `🧾 *OFFICIAL TAX INVOICE RECEIPT*\n` +
+      `----------------------------------------\n` +
+      `📄 *Invoice No:* ${inv.invoice_number}\n` +
+      `📅 *Date:* ${dateStr}\n` +
+      `👤 *Customer:* ${custName}\n` +
+      (inv.customerPhone ? `📱 *Phone:* ${inv.customerPhone}\n` : "") +
+      `----------------------------------------` +
+      itemsText +
+      `----------------------------------------\n` +
+      `💰 *Grand Total:* ₹${amount}\n` +
+      `💳 *Payment Mode:* ${paymentMode}\n` +
+      `✅ *Payment Status:* PAID\n` +
+      `----------------------------------------\n` +
+      shopPhone +
+      `Thank you for choosing *${shopName}* for your veterinary & livestock care! 🙏`;
+  };
+
+  const handleShareWhatsApp = (inv: any, customPhone?: string) => {
+    const targetPhone = customPhone || inv.customerPhone || "";
+    let cleanPhone = targetPhone.replace(/[^0-9]/g, "");
+    if (cleanPhone.length === 10) {
+      cleanPhone = "91" + cleanPhone;
+    }
+    const message = formatWhatsAppMessage(inv);
+    const encodedText = encodeURIComponent(message);
+    const waUrl = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+    window.open(waUrl, "_blank");
+  };
+
+  const handleDownloadInvoicePdf = async (invoiceId: string) => {
+    try {
+      setIsDownloadingPdf(true);
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+      const pdfRes = await fetch(`${API_BASE}/invoices/${invoiceId}/pdf`, {
+        headers: { Authorization: `Bearer ${token || ""}` }
+      });
+      if (!pdfRes.ok) {
+        const errData = await pdfRes.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to download invoice PDF");
+      }
+      const pdfBlob = await pdfRes.blob();
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, "_blank");
+    } catch (err: any) {
+      alert(err.message || "Error downloading invoice PDF");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
+  const handleCopyWhatsAppText = (inv: any) => {
+    const text = formatWhatsAppMessage(inv);
+    navigator.clipboard.writeText(text);
+    setCopiedWA(true);
+    setTimeout(() => setCopiedWA(false), 2500);
   };
 
   const handleProductSearch = (val: string) => {
@@ -653,6 +752,86 @@ export default function Billing() {
               <ShoppingCart className="w-4 h-4" />
               Review & Checkout ➔
             </button>
+          </div>
+        )}
+
+        {/* --- INVOICE GENERATED SUCCESS MODAL (1-CLICK WHATSAPP SHARE) --- */}
+        {createdInvoice && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 w-full max-w-lg p-6 sm:p-8 space-y-6 animate-scale-up">
+              {/* Header */}
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                  <CheckCircle className="w-9 h-9" />
+                </div>
+                <h2 className="text-2xl font-black text-gray-900 tracking-tight">Invoice Generated!</h2>
+                <p className="text-sm text-gray-500">
+                  Tax invoice <span className="font-mono font-bold text-gray-800">{createdInvoice.invoice_number}</span> created successfully.
+                </p>
+              </div>
+
+              {/* Invoice Quick Summary Card */}
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 space-y-2 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-semibold">Customer:</span>
+                  <span className="font-bold text-gray-900">{createdInvoice.customerName || "Walk-in"}</span>
+                </div>
+                {createdInvoice.customerPhone && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500 font-semibold">Phone:</span>
+                    <span className="font-mono font-bold text-gray-900">{createdInvoice.customerPhone}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-semibold">Payment Mode:</span>
+                  <span className="font-bold text-gray-900 uppercase">{createdInvoice.paymentMode}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-gray-200 text-base">
+                  <span className="text-gray-800 font-bold">Total Amount Paid:</span>
+                  <span className="font-black font-mono text-green-700">₹{Number(createdInvoice.totalAmount).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                {/* 1-Click WhatsApp Share */}
+                <button
+                  onClick={() => handleShareWhatsApp(createdInvoice)}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-black text-base rounded-2xl shadow-lg hover:shadow-emerald-200 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+                >
+                  <MessageSquare className="w-5 h-5 fill-white" />
+                  <span>Share Invoice on WhatsApp (1-Click)</span>
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Download PDF */}
+                  <button
+                    onClick={() => handleDownloadInvoicePdf(createdInvoice.id)}
+                    disabled={isDownloadingPdf}
+                    className="py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className={`w-4 h-4 ${isDownloadingPdf ? "animate-bounce" : ""}`} />
+                    <span>{isDownloadingPdf ? "Downloading..." : "Download PDF"}</span>
+                  </button>
+
+                  {/* Copy Text */}
+                  <button
+                    onClick={() => handleCopyWhatsAppText(createdInvoice)}
+                    className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl border border-gray-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {copiedWA ? <Check className="w-4 h-4 text-green-600" /> : <Send className="w-4 h-4 text-gray-500" />}
+                    <span>{copiedWA ? "Copied!" : "Copy Summary"}</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setCreatedInvoice(null)}
+                  className="w-full py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-50 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Close / Start Next Bill
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

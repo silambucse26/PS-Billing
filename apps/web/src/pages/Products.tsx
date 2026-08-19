@@ -3,8 +3,9 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import Sidebar from "../components/Sidebar";
 import { api } from "../lib/api";
+import { generateMasterCsvContent } from "../data/masterCatalog";
 import { 
-  Package, Search, Plus, X, Barcode, Check, Upload, Download, Sparkles, Store, ArrowLeft, Trash2, AlertTriangle
+  Package, Search, Plus, X, Barcode, Check, Upload, Download, Sparkles, Store, ArrowLeft, Trash2, AlertTriangle, RefreshCw
 } from "lucide-react";
 
 export default function Products() {
@@ -245,22 +246,38 @@ export default function Products() {
     }
   };
 
-  // CSV format download helper
+  // CSV format download helper (Downloads full 20 Master Catalog Products)
   const downloadCsvTemplate = () => {
-    const headers = "Name,SKU (Leave blank to auto-generate),Barcode (Leave blank to auto-generate),MRP,Purchase Price,Selling Price,GST Rate,HSN Code,Unit,Stock,Reorder Level,Image URL\n";
-    const sampleRow = 'Demo Mastitis Test Kit,, ,250.00,150.00,200.00,18,3822,pcs,50,5,https://placehold.co/100x100.png\n';
-    
-    const blob = new Blob([headers + sampleRow], { type: "text/csv;charset=utf-8;" });
+    const csvData = generateMasterCsvContent();
+    const blob = new Blob([csvData], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "bulk_products_template.csv");
+    link.setAttribute("download", "master_products_template.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // CSV parser & uploader
+  // Sync Master Catalog to Active Shop with Stock = 0
+  const handleSyncMasterCatalog = async () => {
+    const activeShopId = isSuperAdmin ? selectedShopId : shop?.id;
+    if (!activeShopId) return;
+
+    setLoadingProducts(true);
+    setError(null);
+    try {
+      const res = await api.post("/reports/admin/sync-master-catalog", { shopId: activeShopId });
+      setSuccessMsg(res.message || "Master catalog synced successfully with 0 initial stock!");
+      setTimeout(() => setSuccessMsg(null), 4000);
+      fetchProducts(activeShopId);
+    } catch (err: any) {
+      setError(err.message || "Failed to sync master catalog");
+      setLoadingProducts(false);
+    }
+  };
+
+  // Smart CSV parser & stock updater (Upsert)
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const activeShopId = isSuperAdmin ? selectedShopId : shop?.id;
     const file = e.target.files?.[0];
@@ -327,7 +344,7 @@ export default function Products() {
           const productMrp = Number(columns[3]) || 0;
           const productPurchase = Number(columns[4]) || 0;
           const productSale = Number(columns[5]) || 0;
-          const productGst = Number(columns[6]) || 18;
+          const productGst = Number(columns[6]) || 0;
           const productHsn = columns[7] || null;
           const productUnit = columns[8] || "pcs";
           const productStock = Number(columns[9]) || 0;
@@ -361,11 +378,14 @@ export default function Products() {
           throw new Error("No valid products were parsed from the CSV.");
         }
 
-        const { error: bulkErr } = await supabase.from("products").insert(parsedProducts);
-        if (bulkErr) throw bulkErr;
+        // Call backend bulk upsert endpoint to update existing product stock & insert new items
+        const res = await api.post("/reports/admin/bulk-upsert-products", {
+          shopId: activeShopId,
+          products: parsedProducts
+        });
 
-        setSuccessMsg(`Successfully uploaded ${parsedProducts.length} products!`);
-        setTimeout(() => setSuccessMsg(null), 3500);
+        setSuccessMsg(res.message || `Successfully updated stock for ${parsedProducts.length} products!`);
+        setTimeout(() => setSuccessMsg(null), 4000);
         fetchProducts(activeShopId);
       } catch (err: any) {
         setError(err.message || "Failed to parse or upload CSV data.");
@@ -466,21 +486,30 @@ export default function Products() {
           {isSuperAdmin && (
             <div className="flex flex-wrap items-center gap-3">
               <button
+                onClick={handleSyncMasterCatalog}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 rounded-xl transition-all cursor-pointer shadow-sm"
+                title="Initialize or Repair Master Products with Stock = 0"
+              >
+                <RefreshCw className="w-4 h-4 text-green-600" />
+                Sync Master (0 Stock)
+              </button>
+
+              <button
                 onClick={downloadCsvTemplate}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
-                title="Download Sample CSV Template"
+                title="Download Master Catalog CSV Template"
               >
                 <Download className="w-4 h-4 text-green-600" />
-                Template
+                Download CSV
               </button>
 
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
-                title="Bulk Upload Products CSV"
+                title="Upload CSV to Update Shop Stock & Products"
               >
                 <Upload className="w-4 h-4 text-green-600" />
-                Bulk CSV
+                Upload CSV / Stock
               </button>
               <input
                 type="file"

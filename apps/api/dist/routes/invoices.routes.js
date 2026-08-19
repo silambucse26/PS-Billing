@@ -11,7 +11,7 @@ router.get("/", auth_1.requireAuth, async (req, res) => {
     try {
         let query = supabaseAdmin_1.supabaseAdmin
             .from("invoices")
-            .select("id, invoice_number, invoice_date, total_amount, paid_amount, subtotal, cgst_amount, sgst_amount, igst_amount, round_off, payment_mode, status, created_at, customer:customers(id, name, phone, gstin, state), shop:shops(id, name, state, phone)")
+            .select("*, customer:customers(id, name, phone, gstin, state), shop:shops(id, name, state, phone, address, gstin), items:invoice_items(*, product:products(id, name, unit))")
             .order("created_at", { ascending: false });
         // Non-admins only see their own shop's invoices
         if (req.user?.role !== "super_admin" && req.user?.shop_id) {

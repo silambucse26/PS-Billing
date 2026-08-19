@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabaseAdmin } from '../config/supabaseAdmin';
+import { MASTER_PRODUCTS } from '../config/masterCatalog';
 
 const router = Router();
 
@@ -42,46 +43,25 @@ async function seedDefaultProducts(shopId: string) {
       }
     }
 
-    const defaultProducts = [
-      { name: "Chimertech CMT Kit 500mL with Paddle", mrp: 599, purchase_price: 300, sale_price: 450, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/500mlCMTwithpaddle.jpg?v=1779701780" },
-      { name: "Dip Cup", mrp: 200, purchase_price: 100, sale_price: 150, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/DipCup1unit8.avif?v=1775634547" },
-      { name: "FineKine 1Kg", mrp: 699, purchase_price: 300, sale_price: 600, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/FineKine_1_kg_0.png?v=1779102161" },
-      { name: "FineKine 5Kg with Dip Cup Combo", mrp: 3699, purchase_price: 2000, sale_price: 3200, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/FineKine_5Kg_with_Dip_Cup_Combo.png?v=1779879753" },
-      { name: "Iogiene 1Kg with Dip Cup Combo", mrp: 799, purchase_price: 370, sale_price: 650, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Iogiene1KgwithDipCupCombo9.webp?v=1775629300" },
-      { name: "Iogiene 5Kg with Dip Cup Combo", mrp: 3499, purchase_price: 1900, sale_price: 3000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Iogiene5KgwithDipCupCombo-0.webp?v=1775629790" },
-      { name: "MooFoam 1Kg with Dip Cup Combo", mrp: 699, purchase_price: 380, sale_price: 550, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/MooFoam1KgwithDipCupCombo.webp?v=1775631375" },
-      { name: "MastoVeda 200ml", mrp: 699, purchase_price: 300, sale_price: 525, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Mastoveda_Spray_200ml.png?v=1779104160" },
-      { name: "Quadmastest Pro", mrp: 27500, purchase_price: 16000, sale_price: 23000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Untitled_design_19.png?v=1777432292" },
-      { name: "Tic Tick Tick 200ml Reagent", mrp: 699, purchase_price: 300, sale_price: 420, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/TicTickTic200mlSpray_71290546-8365-4f92-9c26-aed407707759.webp?v=1775635586" },
-      { name: "PregKine Bovine Pregnancy Rapid Test Kit", mrp: 519, purchase_price: 180, sale_price: 250, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/PregKineBovinePregnancyRapidTest-1Test1Test.jpg?v=1775648231" },
-      { name: "Nsure Aqua (Pack of 50)", mrp: 1500, purchase_price: 1000, sale_price: 1400, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Nsure_Aqua_Pack_of_100.avif?v=1779107907" },
-      { name: "Off-Horn Dehorning Paste", mrp: 250, purchase_price: 100, sale_price: 200, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/D-Horn_Dehorning_Paste_3g_for_Calves_Chimertech.png?v=1779106039" },
-      { name: "NutraKine D-Wormer 100ml", mrp: 249, purchase_price: 90, sale_price: 185, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_D-Wormer_100_ml.png?v=1779106048" },
-      { name: "NutraKine Mineral Mixture - Mineral Max 1Kg", mrp: 200, purchase_price: 150, sale_price: 180, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/MineralMax.png?v=1779944665" },
-      { name: "NutraKine Probiotics - ProBos+ 500g", mrp: 280, purchase_price: 180, sale_price: 250, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Probos_1.png?v=1779945063" },
-      { name: "NutraKine Calcdex 5L", mrp: 649, purchase_price: 440, sale_price: 550, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_Calcdex_1L.png?v=1779105504" },
-      { name: "AI Digital Gun", mrp: 33000, purchase_price: 25000, sale_price: 28000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Digitalartificialinseminationgunwithcameraforcattleandhorse_f42b64af-90f5-4738-9892-22a51b2c7464.jpg?v=1775724636" },
-      { name: "Estrus Gun", mrp: 9500, purchase_price: 6000, sale_price: 7500, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/EstrusGunCattle.webp?v=1775649104" },
-      { name: "LN2 Container 3Ltr", mrp: 11000, purchase_price: 8000, sale_price: 9000, unit: "pcs", image_url: "https://chimertech.shop/cdn/shop/files/Portable_Liquid_Nitrogen_LN2_Container_for_Cattle_Semen_Storage_2_Litre.webp?v=1779108459" }
-    ];
-
-    const insertPayload = defaultProducts.map((p, index) => {
-      const cleanName = p.name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
-      const sku = `${cleanName}-${100 + index}`;
+    const insertPayload = MASTER_PRODUCTS.map((p) => {
+      const marginVal = p.sale_price - p.purchase_price;
+      const marginPct = p.sale_price > 0 ? (marginVal / p.sale_price) * 100 : 0;
       return {
         shop_id: shopId,
         name: p.name,
-        sku: sku,
-        barcode: '',
+        sku: p.sku,
+        barcode: p.barcode || null,
         mrp: p.mrp,
         purchase_price: p.purchase_price,
         sale_price: p.sale_price,
-        gst_rate: 18.00,
-        hsn_code: '',
+        margin_value: marginVal,
+        margin_percent: marginPct,
+        gst_rate: p.gst_rate,
+        hsn_code: p.hsn_code,
         unit: p.unit,
         opening_stock: 0,
         current_stock: 0,
-        reorder_level: 5,
+        reorder_level: p.reorder_level,
         category_id: categoryId,
         image_url: p.image_url
       };
@@ -540,6 +520,194 @@ router.get('/admin/shops', requireAuth, async (req: AuthRequest, res: Response) 
   }
 });
 
+// Admin: Sync Master Catalog to a shop or all shops
+router.post('/admin/sync-master-catalog', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'super_admin') {
+      return res.status(403).json({ error: 'Access denied: super_admin role required' });
+    }
+
+    const { shopId, overrideStock } = req.body;
+
+    let targetShopIds: string[] = [];
+    if (shopId) {
+      targetShopIds = [shopId];
+    } else {
+      const { data: allShops } = await supabaseAdmin.from('shops').select('id');
+      targetShopIds = (allShops || []).map((s: any) => s.id);
+    }
+
+    if (targetShopIds.length === 0) {
+      return res.status(400).json({ error: 'No shops found to sync' });
+    }
+
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    for (const sid of targetShopIds) {
+      // Fetch existing products for this shop
+      const { data: existingProducts } = await supabaseAdmin
+        .from('products')
+        .select('*')
+        .eq('shop_id', sid);
+
+      for (const master of MASTER_PRODUCTS) {
+        const marginVal = master.sale_price - master.purchase_price;
+        const marginPct = master.sale_price > 0 ? (marginVal / master.sale_price) * 100 : 0;
+
+        const match = existingProducts?.find((ep: any) => 
+          (ep.sku && master.sku && ep.sku.trim().toLowerCase() === master.sku.trim().toLowerCase()) ||
+          (ep.name && master.name && ep.name.trim().toLowerCase() === master.name.trim().toLowerCase()) ||
+          (ep.barcode && master.barcode && ep.barcode.trim() === master.barcode.trim())
+        );
+
+        if (match) {
+          // Update product details; if overrideStock specified, update current_stock
+          const updatePayload: any = {
+            name: master.name,
+            mrp: master.mrp,
+            purchase_price: master.purchase_price,
+            sale_price: master.sale_price,
+            margin_value: marginVal,
+            margin_percent: marginPct,
+            gst_rate: master.gst_rate,
+            hsn_code: master.hsn_code,
+            unit: master.unit,
+            image_url: master.image_url
+          };
+          if (overrideStock !== undefined) {
+            updatePayload.current_stock = overrideStock;
+          }
+          await supabaseAdmin.from('products').update(updatePayload).eq('id', match.id);
+          totalUpdated++;
+        } else {
+          // Insert new product with stock 0 (or overrideStock)
+          const newStock = overrideStock !== undefined ? overrideStock : 0;
+          await supabaseAdmin.from('products').insert({
+            shop_id: sid,
+            name: master.name,
+            sku: master.sku,
+            barcode: master.barcode || null,
+            mrp: master.mrp,
+            purchase_price: master.purchase_price,
+            sale_price: master.sale_price,
+            margin_value: marginVal,
+            margin_percent: marginPct,
+            gst_rate: master.gst_rate,
+            hsn_code: master.hsn_code,
+            unit: master.unit,
+            opening_stock: newStock,
+            current_stock: newStock,
+            reorder_level: master.reorder_level,
+            image_url: master.image_url
+          });
+          totalCreated++;
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Master Catalog synced: ${totalCreated} products created, ${totalUpdated} updated across ${targetShopIds.length} shops.`,
+      totalCreated,
+      totalUpdated
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Bulk Upsert products for a shop (from CSV upload)
+router.post('/admin/bulk-upsert-products', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'super_admin') {
+      return res.status(403).json({ error: 'Access denied: super_admin role required' });
+    }
+
+    const { shopId, products } = req.body;
+    if (!shopId || !Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ error: 'Invalid request: shopId and products array required' });
+    }
+
+    const { data: existingProducts } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .eq('shop_id', shopId);
+
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const p of products) {
+      const calcMrp = Number(p.mrp) || 0;
+      const calcPurchase = Number(p.purchase_price) || 0;
+      const calcSale = Number(p.sale_price) || 0;
+      const marginVal = calcSale - calcPurchase;
+      const marginPct = calcSale > 0 ? (marginVal / calcSale) * 100 : 0;
+      const stockVal = Number(p.current_stock ?? p.opening_stock ?? p.stock) || 0;
+
+      // Find match by SKU, Barcode, or Name
+      const match = existingProducts?.find((ep: any) => 
+        (p.sku && ep.sku && ep.sku.trim().toLowerCase() === p.sku.trim().toLowerCase()) ||
+        (p.barcode && ep.barcode && ep.barcode.trim() === p.barcode.trim()) ||
+        (p.name && ep.name && ep.name.trim().toLowerCase() === p.name.trim().toLowerCase())
+      );
+
+      if (match) {
+        await supabaseAdmin.from('products').update({
+          name: p.name || match.name,
+          mrp: calcMrp,
+          purchase_price: calcPurchase,
+          sale_price: calcSale,
+          margin_value: marginVal,
+          margin_percent: marginPct,
+          gst_rate: Number(p.gst_rate) || 0,
+          hsn_code: p.hsn_code || null,
+          unit: p.unit || match.unit || 'pcs',
+          current_stock: stockVal,
+          reorder_level: Number(p.reorder_level) || 5,
+          image_url: p.image_url || match.image_url
+        }).eq('id', match.id);
+        updatedCount++;
+      } else {
+        let skuVal = p.sku;
+        if (!skuVal) {
+          skuVal = 'SKU-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        await supabaseAdmin.from('products').insert({
+          shop_id: shopId,
+          name: p.name,
+          sku: skuVal,
+          barcode: p.barcode || null,
+          mrp: calcMrp,
+          purchase_price: calcPurchase,
+          sale_price: calcSale,
+          margin_value: marginVal,
+          margin_percent: marginPct,
+          gst_rate: Number(p.gst_rate) || 0,
+          hsn_code: p.hsn_code || null,
+          unit: p.unit || 'pcs',
+          opening_stock: stockVal,
+          current_stock: stockVal,
+          reorder_level: Number(p.reorder_level) || 5,
+          image_url: p.image_url || null
+        });
+        createdCount++;
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully processed ${products.length} products: ${updatedCount} updated, ${createdCount} created.`,
+      updatedCount,
+      createdCount
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Public registration helper to store shop, franchise and profile under service role
 router.post('/register-shop', async (req: Request, res: Response) => {
   try {
@@ -586,6 +754,9 @@ router.post('/register-shop', async (req: Request, res: Response) => {
     });
 
     if (pErr) throw pErr;
+
+    // 4. Automatically seed all 20 Master Catalog products with stock = 0 for this newly registered shop
+    await seedDefaultProducts(shop.id);
 
     return res.json({ success: true, shopId: shop.id });
   } catch (err: any) {

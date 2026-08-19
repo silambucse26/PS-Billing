@@ -85,9 +85,10 @@ export default function Invoices() {
     }
   };
 
-  // Generate WhatsApp Message text for an invoice
+  // Generate rich WhatsApp Message text for an invoice
   const formatWhatsAppMessage = (inv: any) => {
     const shopName = inv.shop?.name || "Pashu Central Center";
+    const shopPhone = inv.shop?.phone ? `📞 Shop Contact: ${inv.shop.phone}\n` : "";
     const dateStr = new Date(inv.invoice_date || inv.created_at).toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "short",
@@ -98,15 +99,32 @@ export default function Invoices() {
     const paymentMode = (inv.payment_mode || "Cash").toUpperCase();
     const status = (inv.status || "Paid").toUpperCase();
 
-    return `🐾 *${shopName} - Invoice Summary*\n` +
+    let itemsText = "";
+    if (inv.items && Array.isArray(inv.items) && inv.items.length > 0) {
+      itemsText = "\n📦 *Items Purchased:*\n" + inv.items.map((item: any, idx: number) => {
+        const pName = item.product?.name || item.product_name || `Product #${idx + 1}`;
+        const qty = item.quantity || item.qty || 1;
+        const price = Number(item.unit_price || item.unitPrice || 0).toFixed(2);
+        const lineTotal = Number(item.line_total || item.lineTotal || (qty * Number(price))).toFixed(2);
+        return `• ${pName} (${qty} ${item.unit || item.product?.unit || 'pcs'} x ₹${price}) = ₹${lineTotal}`;
+      }).join("\n") + "\n";
+    }
+
+    return `🐾 *${shopName.toUpperCase()}*\n` +
+      `🧾 *OFFICIAL TAX INVOICE RECEIPT*\n` +
       `----------------------------------------\n` +
       `📄 *Invoice No:* ${inv.invoice_number}\n` +
       `📅 *Date:* ${dateStr}\n` +
       `👤 *Customer:* ${custName}\n` +
-      `💰 *Total Amount:* ₹${amount}\n` +
-      `💳 *Payment Mode:* ${paymentMode}\n` +
-      `✅ *Status:* ${status}\n` +
+      (inv.customer?.phone ? `📱 *Phone:* ${inv.customer.phone}\n` : "") +
+      `----------------------------------------` +
+      itemsText +
       `----------------------------------------\n` +
+      `💰 *Grand Total:* ₹${amount}\n` +
+      `💳 *Payment Mode:* ${paymentMode}\n` +
+      `✅ *Payment Status:* ${status}\n` +
+      `----------------------------------------\n` +
+      shopPhone +
       `Thank you for choosing *${shopName}* for your veterinary & livestock care! 🙏`;
   };
 

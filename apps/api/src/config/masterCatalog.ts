@@ -1,0 +1,297 @@
+export interface MasterProductItem {
+  name: string;
+  sku: string;
+  barcode?: string | null;
+  mrp: number;
+  purchase_price: number;
+  sale_price: number;
+  gst_rate: number;
+  hsn_code: string | null;
+  unit: string;
+  default_stock?: number;
+  reorder_level: number;
+  image_url: string | null;
+}
+
+export const MASTER_PRODUCTS: MasterProductItem[] = [
+  {
+    name: "Chimertech CMT Kit 500mL with Paddle",
+    sku: "VDD1-101-B01-500M",
+    barcode: "890101500001",
+    mrp: 599,
+    purchase_price: 300,
+    sale_price: 450,
+    gst_rate: 5,
+    hsn_code: "38220019",
+    unit: "pcs",
+    default_stock: 100,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/500mlCMTwithpaddle.jpg?v=1779701780"
+  },
+  {
+    name: "Dip Cup",
+    sku: "VDD3-204-A01-1UNT",
+    barcode: "890204100001",
+    mrp: 200,
+    purchase_price: 100,
+    sale_price: 150,
+    gst_rate: 18,
+    hsn_code: "38089199",
+    unit: "pcs",
+    default_stock: 100,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/DipCup1unit8.avif?v=1775634547"
+  },
+  {
+    name: "FineKine 1Kg",
+    sku: "VDD3-201-A01-001K",
+    barcode: "890201001001",
+    mrp: 699,
+    purchase_price: 300,
+    sale_price: 600,
+    gst_rate: 5,
+    hsn_code: "30049085",
+    unit: "pcs",
+    default_stock: 80,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/FineKine_1_kg_0.png?v=1779102161"
+  },
+  {
+    name: "FineKine 5Kg with Dip Cup Combo",
+    sku: "VDD3-201-B01-005K",
+    barcode: "890201005001",
+    mrp: 3699,
+    purchase_price: 2000,
+    sale_price: 3200,
+    gst_rate: 5,
+    hsn_code: "30049085",
+    unit: "pcs",
+    default_stock: 5,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/FineKine_5Kg_with_Dip_Cup_Combo.png?v=1779879753"
+  },
+  {
+    name: "Iogiene 1Kg with Dip Cup Combo",
+    sku: "VDD3-202-B01-001K",
+    barcode: "890202001001",
+    mrp: 799,
+    purchase_price: 370,
+    sale_price: 650,
+    gst_rate: 5,
+    hsn_code: "30049085",
+    unit: "pcs",
+    default_stock: 80,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Iogiene1KgwithDipCupCombo9.webp?v=1775629300"
+  },
+  {
+    name: "Iogiene 5Kg with Dip Cup Combo",
+    sku: "VDD3-202-B01-005K",
+    barcode: "890202005001",
+    mrp: 3499,
+    purchase_price: 1900,
+    sale_price: 3000,
+    gst_rate: 5,
+    hsn_code: "30049085",
+    unit: "pcs",
+    default_stock: 5,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Iogiene5KgwithDipCupCombo-0.webp?v=1775629790"
+  },
+  {
+    name: "MooFoam 1Kg with Dip Cup Combo",
+    sku: "VDD3-203-B01-001K",
+    barcode: "890203001001",
+    mrp: 699,
+    purchase_price: 380,
+    sale_price: 550,
+    gst_rate: 5,
+    hsn_code: "30049085",
+    unit: "pcs",
+    default_stock: 80,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/MooFoam1KgwithDipCupCombo.webp?v=1775631375"
+  },
+  {
+    name: "MastoVeda 200ml",
+    sku: "VDD2-301-A01-0200M",
+    barcode: "890301020001",
+    mrp: 699,
+    purchase_price: 300,
+    sale_price: 525,
+    gst_rate: 5,
+    hsn_code: "30049085",
+    unit: "pcs",
+    default_stock: 50,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Mastoveda_Spray_200ml.png?v=1779104160"
+  },
+  {
+    name: "Quadmastest Pro",
+    sku: "VDG1-601-A01-1UNT",
+    barcode: "890601001001",
+    mrp: 27500,
+    purchase_price: 16000,
+    sale_price: 23000,
+    gst_rate: 5,
+    hsn_code: "90189099",
+    unit: "pcs",
+    default_stock: 1,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Untitled_design_19.png?v=1777432292"
+  },
+  {
+    name: "Tic Tick Tick 200ml Reagent",
+    sku: "VDD2-302-A01-200M",
+    barcode: "890302020001",
+    mrp: 699,
+    purchase_price: 300,
+    sale_price: 420,
+    gst_rate: 5,
+    hsn_code: "38089199",
+    unit: "pcs",
+    default_stock: 80,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/TicTickTic200mlSpray_71290546-8365-4f92-9c26-aed407707759.webp?v=1775635586"
+  },
+  {
+    name: "PregKine Bovine Pregnancy Rapid Test Kit",
+    sku: "VBD1-801-A01-01TK",
+    barcode: "890801001001",
+    mrp: 519,
+    purchase_price: 180,
+    sale_price: 250,
+    gst_rate: 5,
+    hsn_code: "38221990",
+    unit: "pcs",
+    default_stock: 75,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/PregKineBovinePregnancyRapidTest-1Test1Test.jpg?v=1775648231"
+  },
+  {
+    name: "Nsure Aqua (Pack of 50)",
+    sku: "VBG2-701-A01-050P",
+    barcode: "890701050001",
+    mrp: 1500,
+    purchase_price: 1000,
+    sale_price: 1400,
+    gst_rate: 18,
+    hsn_code: "90318000",
+    unit: "pcs",
+    default_stock: 5,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Nsure_Aqua_Pack_of_100.avif?v=1779107907"
+  },
+  {
+    name: "Off-Horn Dehorning Paste",
+    sku: "VHG1-907-A01-003G",
+    barcode: "890907003001",
+    mrp: 250,
+    purchase_price: 100,
+    sale_price: 200,
+    gst_rate: 12,
+    hsn_code: "30049085",
+    unit: "pcs",
+    default_stock: 30,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/D-Horn_Dehorning_Paste_3g_for_Calves_Chimertech.png?v=1779106039"
+  },
+  {
+    name: "NutraKine D-Wormer 100ml",
+    sku: "VDS1-510-A01-100M",
+    barcode: "890510100001",
+    mrp: 249,
+    purchase_price: 90,
+    sale_price: 185,
+    gst_rate: 0,
+    hsn_code: "23099090",
+    unit: "pcs",
+    default_stock: 40,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_D-Wormer_100_ml.png?v=1779106048"
+  },
+  {
+    name: "NutraKine Mineral Mixture - Mineral Max 1Kg",
+    sku: "VNM1-401-A01-001K",
+    barcode: "890401001001",
+    mrp: 200,
+    purchase_price: 150,
+    sale_price: 180,
+    gst_rate: 0,
+    hsn_code: "23099090",
+    unit: "pcs",
+    default_stock: 100,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/MineralMax.png?v=1779944665"
+  },
+  {
+    name: "NutraKine Probiotics - ProBos+ 500g",
+    sku: "VNM1-402-A01-500G",
+    barcode: "890402500001",
+    mrp: 280,
+    purchase_price: 180,
+    sale_price: 250,
+    gst_rate: 0,
+    hsn_code: "23099090",
+    unit: "pcs",
+    default_stock: 100,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Probos_1.png?v=1779945063"
+  },
+  {
+    name: "NutraKine Calcdex 5L",
+    sku: "VNM1-403-A01-005L",
+    barcode: "890403005001",
+    mrp: 649,
+    purchase_price: 440,
+    sale_price: 550,
+    gst_rate: 0,
+    hsn_code: "23099090",
+    unit: "pcs",
+    default_stock: 10,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_Calcdex_1L.png?v=1779105504"
+  },
+  {
+    name: "AI Digital Gun",
+    sku: "VBG1-806-A01-1UNT",
+    barcode: "890806001001",
+    mrp: 33000,
+    purchase_price: 25000,
+    sale_price: 28000,
+    gst_rate: 18,
+    hsn_code: "90189099",
+    unit: "pcs",
+    default_stock: 1,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Digitalartificialinseminationgunwithcameraforcattleandhorse_f42b64af-90f5-4738-9892-22a51b2c7464.jpg?v=1775724636"
+  },
+  {
+    name: "Estrus Gun",
+    sku: "VBG1-802-A01-1UNT",
+    barcode: "890802001001",
+    mrp: 9500,
+    purchase_price: 6000,
+    sale_price: 7500,
+    gst_rate: 5,
+    hsn_code: "90181290",
+    unit: "pcs",
+    default_stock: 1,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/EstrusGunCattle.webp?v=1775649104"
+  },
+  {
+    name: "LN2 Container 3Ltr",
+    sku: "VBG1-805-A01-003L",
+    barcode: "890805003001",
+    mrp: 11000,
+    purchase_price: 8000,
+    sale_price: 9000,
+    gst_rate: 18,
+    hsn_code: "96170012",
+    unit: "pcs",
+    default_stock: 1,
+    reorder_level: 5,
+    image_url: "https://chimertech.shop/cdn/shop/files/Portable_Liquid_Nitrogen_LN2_Container_for_Cattle_Semen_Storage_2_Litre.webp?v=1779108459"
+  }
+];
