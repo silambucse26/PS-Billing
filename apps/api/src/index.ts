@@ -1,12 +1,17 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+
+// Load .env from current directory, parent directory, and apps/api directory
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env') });
+
 import invoiceRoutes from './routes/invoices.routes';
 import reportRoutes from './routes/reports.routes';
 import customerRoutes from './routes/customers.routes';
 import restockRoutes from './routes/restock.routes';
-
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 5000;

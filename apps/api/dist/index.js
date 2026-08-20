@@ -6,11 +6,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
+// Load .env from current directory, parent directory, and apps/api directory
+dotenv_1.default.config();
+dotenv_1.default.config({ path: path_1.default.resolve(__dirname, '../.env') });
+dotenv_1.default.config({ path: path_1.default.resolve(process.cwd(), 'apps/api/.env') });
 const invoices_routes_1 = __importDefault(require("./routes/invoices.routes"));
 const reports_routes_1 = __importDefault(require("./routes/reports.routes"));
 const customers_routes_1 = __importDefault(require("./routes/customers.routes"));
 const restock_routes_1 = __importDefault(require("./routes/restock.routes"));
-dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT || 5000;
 app.use((0, cors_1.default)({

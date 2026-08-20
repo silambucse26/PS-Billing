@@ -8,6 +8,7 @@ import Products from "./pages/Products";
 import Customers from "./pages/Customers";
 import Invoices from "./pages/Invoices";
 import RestockApply from "./pages/RestockApply";
+import RecommendedProducts from "./pages/RecommendedProducts";
 import AdminRestock from "./pages/AdminRestock";
 import Profile from "./pages/Profile";
 
@@ -59,6 +60,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Invoices />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/interested-products"
+            element={
+              <ProtectedRoute>
+                <RecommendedProducts />
               </ProtectedRoute>
             }
           />

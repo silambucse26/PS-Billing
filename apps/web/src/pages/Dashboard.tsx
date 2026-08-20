@@ -27,12 +27,15 @@ import {
   FileSpreadsheet,
   ArrowUpDown,
   Filter,
-  ChevronDown
+  ChevronDown,
+  Mail,
+  Building2,
+  CheckCircle2
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Dashboard() {
-  const { shop, profile, refreshProfile } = useAuth();
+  const { user, shop, profile, refreshProfile } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
@@ -322,6 +325,131 @@ export default function Dashboard() {
               </span>
               <p className="text-[11px] text-gray-500">Report Generated: {new Date().toLocaleString("en-IN")}</p>
             </div>
+          </div>
+        </div>
+
+        {/* ============================================================== */}
+        {/* PREMIUM SHOP & OWNER IDENTITY HERO CARD                        */}
+        {/* ============================================================== */}
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-xs p-5 sm:p-6 mb-6 print:hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            
+            {/* Left: Brand Visuals (Shop Image + User Avatar) & Core Information */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+              
+              {/* Separate Visual Slots: Shop Store Image + Owner Profile Photo */}
+              <div className="flex items-center gap-3.5 flex-shrink-0">
+                {/* 1. Shop Store Logo Frame */}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200/90 shadow-2xs overflow-hidden flex items-center justify-center p-1.5">
+                    {currentShopInfo?.logo_url || currentShopInfo?.image_url ? (
+                      <img
+                        src={currentShopInfo.logo_url || currentShopInfo.image_url}
+                        alt={currentShopInfo.name || "Shop Image"}
+                        className="w-full h-full object-contain mix-blend-multiply"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-emerald-800 bg-emerald-100/50 rounded-xl">
+                        <Store className="w-6 h-6" />
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Shop Image</span>
+                </div>
+
+                {/* 2. Owner Profile Photo Frame */}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-slate-50 to-gray-100 border-2 border-gray-200/90 shadow-2xs overflow-hidden flex items-center justify-center p-1">
+                    {profile?.avatar_url ? (
+                      <img
+                        src={profile.avatar_url}
+                        alt={profile.full_name || "Owner Profile"}
+                        className="w-full h-full object-cover rounded-xl"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-700 bg-slate-200/70 rounded-xl">
+                        <User className="w-6 h-6" />
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Profile Photo</span>
+                </div>
+              </div>
+
+              {/* Shop Title, Badges, and Details Grid */}
+              <div className="space-y-2">
+                {/* Shop Name & Status Badges */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-xl sm:text-2xl font-black text-gray-950 tracking-tight">
+                    {currentShopInfo?.name || "PASHUCENTRAL STORE"}
+                  </h2>
+                  
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Verified Store
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                    {profile?.role === "super_admin" ? "Central Admin" : "Franchise Partner"}
+                  </span>
+                </div>
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5 text-xs text-gray-600 font-medium">
+                  
+                  {/* Owner Name */}
+                  <div className="flex items-center gap-2">
+                    <User className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                    <span>Owner: <strong className="text-gray-900 font-bold">{profile?.full_name || "Franchise Partner"}</strong></span>
+                  </div>
+
+                  {/* Phone */}
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                    <span>Phone: <strong className="text-gray-900">{currentShopInfo?.phone || profile?.phone || "Not Specified"}</strong></span>
+                  </div>
+
+                  {/* Email */}
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                    <span className="truncate max-w-[220px]">Email: <strong className="text-gray-900">{user?.email || "N/A"}</strong></span>
+                  </div>
+
+                  {/* Address */}
+                  <div className="flex items-center gap-2 sm:col-span-2">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                    <span className="line-clamp-1">
+                      Address: <strong className="text-gray-900">{currentShopInfo?.address || "Franchise Store"}{currentShopInfo?.state ? `, ${currentShopInfo.state}` : ""}</strong>
+                    </span>
+                  </div>
+
+                  {/* GSTIN */}
+                  {currentShopInfo?.gstin && (
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                      <span>GSTIN: <strong className="text-gray-900 font-bold">{currentShopInfo.gstin}</strong></span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Quick Action Controls */}
+            <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between gap-3 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex-shrink-0">
+              <Link
+                to="/profile"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-200 hover:border-gray-300 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-emerald-700" />
+                Edit Profile & Shop
+              </Link>
+
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>POS & Store Active</span>
+              </div>
+            </div>
+
           </div>
         </div>
 

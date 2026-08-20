@@ -11,7 +11,8 @@ import {
   Truck,
   Store,
   Menu,
-  X
+  X,
+  Sparkles
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -26,6 +27,7 @@ export default function Sidebar() {
     { name: "Billing POS", path: "/billing", icon: Receipt },
     { name: "Invoices", path: "/invoices", icon: FileText },
     { name: "Products & Stock", path: "/products", icon: Package },
+    { name: "Interested Products", path: "/interested-products", icon: Sparkles, badge: "New" },
     { name: "Restock Products", path: "/restock", icon: Truck },
     { name: "Customers", path: "/customers", icon: Users },
     { name: "Profile & Settings", path: "/profile", icon: Settings },
@@ -123,14 +125,23 @@ export default function Sidebar() {
                     key={item.path}
                     to={item.path}
                     onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
                       isActive
                         ? "bg-green-600 text-white shadow-sm"
                         : "text-gray-700 hover:bg-gray-50 hover:text-gray-950"
                     }`}
                   >
-                    <Icon className="w-5 h-5" />
-                    {item.name}
+                    <div className="flex items-center gap-3">
+                      <Icon className="w-5 h-5" />
+                      {item.name}
+                    </div>
+                    {item.badge && (
+                      <span className={`px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full ${
+                        isActive ? "bg-white text-green-800" : "bg-emerald-600 text-white"
+                      }`}>
+                        {item.badge}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -196,14 +207,21 @@ export default function Sidebar() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     isActive
-                      ? "bg-green-50 text-green-700 border border-green-200"
+                      ? "bg-green-50 text-green-700 border border-green-200 font-bold"
                       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
-                  {item.name}
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-5 h-5" />
+                    {item.name}
+                  </div>
+                  {item.badge && (
+                    <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full bg-emerald-600 text-white shadow-2xs">
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}

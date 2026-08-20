@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node --max-http-header-size=65536 dist/index.js",
-    "dev": "ts-node-dev --node-args=\"--max-http-header-size=65536\" --respawn --transpile-only src/index.ts"
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api } from "../lib/api";
 import { supabase } from "../lib/supabaseClient";
 import Sidebar from "../components/Sidebar";
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 
 export default function RestockApply() {
+  const location = useLocation();
   const { shop } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -28,7 +30,7 @@ export default function RestockApply() {
   
   // Selected items for restock request
   const [orderItems, setOrderItems] = useState<{
-    productId: string;
+    productId?: string;
     productName: string;
     sku: string;
     imageUrl: string | null;
@@ -47,6 +49,30 @@ export default function RestockApply() {
   // Past requests
   const [myRequests, setMyRequests] = useState<any[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
+
+  // Check if incoming from Interested Products page with a preselected product
+  useEffect(() => {
+    if (location.state?.preSelectedProduct) {
+      const p = location.state.preSelectedProduct;
+      setOrderItems((prev) => {
+        const exists = prev.some((it) => it.sku?.toLowerCase() === p.sku?.toLowerCase());
+        if (exists) return prev;
+        return [
+          ...prev,
+          {
+            productId: p.productId,
+            productName: p.productName,
+            sku: p.sku || "N/A",
+            imageUrl: p.imageUrl || null,
+            unit: p.unit || "pcs",
+            currentStock: Number(p.currentStock || 0),
+            unitPurchasePrice: Number(p.unitPurchasePrice || 0),
+            quantity: Number(p.quantity || 10)
+          }
+        ];
+      });
+    }
+  }, [location.state]);
 
   useEffect(() => {
     if (shop?.id) {
@@ -86,11 +112,14 @@ export default function RestockApply() {
     }
   };
 
+  const getItemKey = (item: any) => item.sku || item.productId || item.id;
+
   const addItemToOrder = (p: any) => {
-    const existing = orderItems.find(item => item.productId === p.id);
+    const key = p.sku || p.id;
+    const existing = orderItems.find(item => getItemKey(item) === key);
     if (existing) {
       setOrderItems(orderItems.map(item => 
-        item.productId === p.id ? { ...item, quantity: item.quantity + 5 } : item
+        getItemKey(item) === key ? { ...item, quantity: item.quantity + 5 } : item
       ));
     } else {
       setOrderItems([...orderItems, {
@@ -106,18 +135,18 @@ export default function RestockApply() {
     }
   };
 
-  const updateQuantity = (productId: string, newQty: number) => {
+  const updateQuantity = (key: string, newQty: number) => {
     if (newQty <= 0) {
-      setOrderItems(orderItems.filter(item => item.productId !== productId));
+      setOrderItems(orderItems.filter(item => getItemKey(item) !== key));
     } else {
       setOrderItems(orderItems.map(item => 
-        item.productId === productId ? { ...item, quantity: newQty } : item
+        getItemKey(item) === key ? { ...item, quantity: newQty } : item
       ));
     }
   };
 
-  const removeItem = (productId: string) => {
-    setOrderItems(orderItems.filter(item => item.productId !== productId));
+  const removeItem = (key: string) => {
+    setOrderItems(orderItems.filter(item => getItemKey(item) !== key));
   };
 
   const totalEstimatedCost = orderItems.reduce(
@@ -378,64 +407,67 @@ export default function RestockApply() {
                 </div>
               ) : (
                 <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
-                  {orderItems.map((item) => (
-                    <div key={item.productId} className="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 p-0.5 flex-shrink-0">
-                            {item.imageUrl ? (
-                              <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-contain" />
-                            ) : (
-                              <Package className="w-4 h-4 text-gray-400 m-auto" />
-                            )}
+                  {orderItems.map((item) => {
+                    const key = getItemKey(item);
+                    return (
+                      <div key={key} className="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 p-0.5 flex-shrink-0">
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-contain" />
+                              ) : (
+                                <Package className="w-4 h-4 text-gray-400 m-auto" />
+                              )}
+                            </div>
+                            <div>
+                              <span className="font-bold text-xs text-gray-900 block line-clamp-1">{item.productName}</span>
+                              <span className="text-[11px] text-gray-400">₹{item.unitPurchasePrice.toFixed(2)} / unit</span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="font-bold text-xs text-gray-900 block line-clamp-1">{item.productName}</span>
-                            <span className="text-[11px] text-gray-400">₹{item.unitPurchasePrice.toFixed(2)} / unit</span>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(key)}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.productId)}
-                          className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
 
-                      <div className="flex items-center justify-between pt-1 border-t border-gray-200/60">
-                        {/* Quantity Stepper */}
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                            className="w-6 h-6 rounded-lg bg-white border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 font-bold"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(item.productId, parseInt(e.target.value) || 1)}
-                            className="w-14 text-center font-bold text-xs bg-white border border-gray-300 rounded-lg py-1 text-gray-900"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                            className="w-6 h-6 rounded-lg bg-white border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 font-bold"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/60">
+                          {/* Quantity Stepper */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(key, item.quantity - 1)}
+                              className="w-6 h-6 rounded-lg bg-white border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 font-bold cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <input
+                              type="number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => updateQuantity(key, parseInt(e.target.value) || 1)}
+                              className="w-14 text-center font-bold text-xs bg-white border border-gray-300 rounded-lg py-1 text-gray-900"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(key, item.quantity + 1)}
+                              className="w-6 h-6 rounded-lg bg-white border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 font-bold cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
 
                         <span className="font-black font-mono text-xs text-gray-900">
                           ₹{(item.quantity * item.unitPurchasePrice).toFixed(2)}
                         </span>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
+              </div>
               )}
 
               {/* Payment Mode */}

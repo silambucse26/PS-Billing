@@ -162,18 +162,33 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response) =
     // If approving, increment the product stock in Supabase database & record stock movement!
     if (status === 'approved' && request.status !== 'approved') {
       for (const item of request.items) {
-        if (!item.productId) continue;
+        let productId = item.productId;
+        let product: any = null;
 
-        // Fetch current product
-        const { data: product } = await supabaseAdmin
-          .from('products')
-          .select('id, current_stock, shop_id')
-          .eq('id', item.productId)
-          .single();
+        if (productId) {
+          const { data } = await supabaseAdmin
+            .from('products')
+            .select('id, current_stock, shop_id, name, sku')
+            .eq('id', productId)
+            .single();
+          product = data;
+        }
+
+        // If not found by ID, look up by SKU in that shop
+        if (!product && item.sku && item.sku !== 'N/A') {
+          const { data } = await supabaseAdmin
+            .from('products')
+            .select('id, current_stock, shop_id, name, sku')
+            .eq('shop_id', request.shopId)
+            .eq('sku', item.sku)
+            .maybeSingle();
+          product = data;
+        }
+
+        const addQty = Number(item.quantity || 0);
 
         if (product) {
           const currentStock = Number(product.current_stock || 0);
-          const addQty = Number(item.quantity || 0);
           const newStock = currentStock + addQty;
 
           // 1. Update product stock in database
@@ -194,6 +209,39 @@ router.put('/:id/status', requireAuth, async (req: AuthRequest, res: Response) =
             });
           } catch (smErr) {
             console.error('Error inserting stock movement:', smErr);
+          }
+        } else {
+          // Provision brand new product for this shop
+          try {
+            const { data: newProd, error: npErr } = await supabaseAdmin
+              .from('products')
+              .insert({
+                shop_id: request.shopId,
+                name: item.productName || 'New Product',
+                sku: item.sku || `SKU-${Date.now()}`,
+                purchase_price: Number(item.unitPurchasePrice || 0),
+                sale_price: Number(item.unitSalePrice || item.unitPurchasePrice * 1.3 || 0),
+                current_stock: addQty,
+                unit: item.unit || 'pcs',
+                image_url: item.imageUrl || null,
+                reorder_level: 5
+              })
+              .select()
+              .single();
+
+            if (!npErr && newProd) {
+              item.productId = newProd.id;
+              await supabaseAdmin.from('stock_movements').insert({
+                shop_id: request.shopId,
+                product_id: newProd.id,
+                type: 'purchase',
+                quantity: addQty,
+                balance_after: addQty,
+                reference_id: crypto.randomUUID()
+              });
+            }
+          } catch (createErr) {
+            console.error('Error provisioning new product for shop:', createErr);
           }
         }
       }
