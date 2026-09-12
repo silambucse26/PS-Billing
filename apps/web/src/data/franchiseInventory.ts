@@ -438,3 +438,11 @@ export const FRANCHISE_SUMMARY = {
   totalDemoValue: 70000
 };
 
+export function generateFranchiseCsvContent(): string {
+  const headers = "Name,SKU (Leave blank to auto-generate),Barcode (Leave blank to auto-generate),MRP,Purchase Price,Selling Price,GST Rate,HSN Code,Unit,Stock,Reorder Level,Image URL\n";
+  const rows = FRANCHISE_PRODUCTS.map(p => {
+    return `"${p.name.replace(/"/g, '""')}","${p.sku}","${p.barcode || ""}","${p.mrp}","${p.purchase_price}","${p.sale_price}","${p.gst_rate}","${p.hsn_code || ""}","${p.unit}","${p.default_stock || 0}","5","${p.image_url || ""}"`;
+  }).join("\n");
+  return headers + rows;
+}
+

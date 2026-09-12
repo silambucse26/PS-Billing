@@ -3,7 +3,7 @@ import { api } from "../lib/api";
 import { supabase } from "../lib/supabaseClient";
 import Sidebar from "../components/Sidebar";
 import { generateMasterCsvContent } from "../data/masterCatalog";
-import { FRANCHISE_PRODUCTS, FRANCHISE_SUMMARY } from "../data/franchiseInventory";
+import { FRANCHISE_PRODUCTS, FRANCHISE_SUMMARY, generateFranchiseCsvContent } from "../data/franchiseInventory";
 import { 
   Store, Search, Plus, X, Barcode, Check, Upload, Download, Sparkles, ArrowLeft, Package, Trash2, AlertTriangle, RefreshCw,
   IndianRupee, TrendingUp, Edit2, ShieldCheck, ShoppingCart, FileSpreadsheet, Send
@@ -427,6 +427,19 @@ export default function AdminShops() {
     document.body.removeChild(link);
   };
 
+  // Franchise 944 Units Spreadsheet CSV download helper (20 Products, 944 Stock, ₹3L Cost, ₹4.5L Sales)
+  const downloadFranchiseCsv = () => {
+    const csvData = generateFranchiseCsvContent();
+    const blob = new Blob([csvData], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "franchise_inventory_944_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Sync Master Catalog to Selected Shop with Stock = 0
   const handleSyncMasterCatalog = async () => {
     if (!selectedShopId) return;
@@ -612,12 +625,21 @@ export default function AdminShops() {
                   </button>
 
                   <button
+                    onClick={downloadFranchiseCsv}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl transition-all cursor-pointer shadow-sm"
+                    title="Download 20 Franchise Products / 944 Units CSV"
+                  >
+                    <Download className="w-4 h-4 text-blue-600" />
+                    Franchise CSV (944 Units)
+                  </button>
+
+                  <button
                     onClick={downloadCsvTemplate}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
                     title="Download Master Catalog CSV Template"
                   >
-                    <Download className="w-4 h-4 text-green-600" />
-                    Download CSV
+                    <Download className="w-4 h-4 text-gray-600" />
+                    Master CSV
                   </button>
 
                   <button
@@ -1064,6 +1086,15 @@ export default function AdminShops() {
                         </button>
                       </div>
                       <span className="text-[11px] text-blue-200">Applies 944 standard units & prices instantly.</span>
+                      <button
+                        type="button"
+                        onClick={downloadFranchiseCsv}
+                        className="w-full mt-1 py-2 bg-white/90 hover:bg-white text-blue-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        title="Download Franchise 944 Units Excel / CSV Spreadsheet"
+                      >
+                        <Download className="w-3.5 h-3.5 text-blue-700" />
+                        Download 944 Excel / CSV
+                      </button>
                     </div>
                   </div>
 
