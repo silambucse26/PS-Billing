@@ -4,10 +4,9 @@ import { supabase } from "../lib/supabaseClient";
 import Sidebar from "../components/Sidebar";
 import { generateMasterCsvContent } from "../data/masterCatalog";
 import { FRANCHISE_PRODUCTS, FRANCHISE_SUMMARY } from "../data/franchiseInventory";
-import type { FranchiseProductModel } from "../data/franchiseInventory";
 import { 
   Store, Search, Plus, X, Barcode, Check, Upload, Download, Sparkles, ArrowLeft, Package, Trash2, AlertTriangle, RefreshCw,
-  IndianRupee, TrendingUp, Edit2, ShieldCheck, ShoppingCart, FileSpreadsheet, Layers, Send, ChevronRight, HelpCircle
+  IndianRupee, TrendingUp, Edit2, ShieldCheck, ShoppingCart, FileSpreadsheet, Send
 } from "lucide-react";
 
 export default function AdminShops() {
@@ -83,7 +82,7 @@ export default function AdminShops() {
     setDeployingStock(true);
     setError(null);
     try {
-      const res = await api.post(`/reports/admin/shops/${shopId}/deploy-standard-stock`);
+      const res = await api.post(`/reports/admin/shops/${shopId}/deploy-standard-stock`, {});
       setSuccessMsg(res.message || `Standard franchise inventory (944 units across 20 products) deployed successfully to ${shopName}!`);
       setTimeout(() => setSuccessMsg(null), 5000);
       fetchShops();

@@ -425,10 +425,16 @@ export const FRANCHISE_PRODUCTS: FranchiseProductModel[] = [
 export const FRANCHISE_SUMMARY = {
   totalProducts: 20,
   totalStockQuantity: 944,
+  totalStockUnits: 944,
   totalInventoryCost: 300000,
+  totalCostValue: 300000,
   totalRevenueOnSales: 450000,
+  totalRevenue: 450000,
   totalNetProfit: 150000,
+  totalProfit: 150000,
   averageMarginPercent: 50.0,
+  averageMargin: 50.0,
   totalDemoKits: 36,
   totalDemoValue: 70000
 };
+

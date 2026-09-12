@@ -107,8 +107,17 @@ export default function Billing() {
   const totals = calcInvoiceTotals(cart, shop?.state || "Delhi", customerState || shop?.state || "Delhi");
 
   const addToCart = (p: any) => {
+    const availableStock = Number(p.current_stock || 0);
+    if (availableStock <= 0) {
+      alert(`Cannot add "${p.name}". Product is currently out of stock (0 available). Once your shop is verified and approved by admin, stock will be provisioned.`);
+      return;
+    }
     const existing = cart.find((c) => c.productId === p.id);
     if (existing) {
+      if (existing.qty + 1 > availableStock) {
+        alert(`Cannot add more "${p.name}". Only ${availableStock} ${p.unit || 'pcs'} available in inventory stock.`);
+        return;
+      }
       setCart(cart.map((c) => c.productId === p.id ? { ...c, qty: c.qty + 1 } : c));
     } else {
       setCart([...cart, {
@@ -124,6 +133,14 @@ export default function Billing() {
   };
 
   const increaseQty = (productId: string) => {
+    const prod = products.find(p => p.id === productId);
+    const existing = cart.find((c) => c.productId === productId);
+    if (!existing) return;
+    const availableStock = Number(prod?.current_stock ?? 999999);
+    if (existing.qty + 1 > availableStock) {
+      alert(`Cannot exceed available inventory stock (${availableStock} ${prod?.unit || 'pcs'} available).`);
+      return;
+    }
     setCart(cart.map((c) => c.productId === productId ? { ...c, qty: c.qty + 1 } : c));
   };
 
@@ -234,8 +251,9 @@ export default function Billing() {
       setSelectedCustomerId("");
       setAutoFilledMatchName(null);
       
-      // Reload customers list
+      // Reload customers list and refresh remaining inventory stock
       fetchCustomers();
+      fetchProducts();
     } catch (e: any) {
       setError(e.message || "Failed to create invoice");
     } finally {
@@ -624,8 +642,18 @@ export default function Billing() {
                           )}
                           <div>
                             <div className="text-sm font-bold text-gray-900">{p.name}</div>
-                            <div className="text-xxs text-gray-500 mt-0.5">
-                              SKU: {p.sku || "N/A"} | Stock: {p.current_stock} {p.unit || "pcs"}
+                            <div className="text-xxs text-gray-500 mt-0.5 flex items-center gap-1.5">
+                              <span>SKU: {p.sku || "N/A"}</span>
+                              <span>•</span>
+                              {Number(p.current_stock || 0) <= 0 ? (
+                                <span className="px-1.5 py-0.5 bg-red-100 text-red-700 font-extrabold rounded text-[10px]">
+                                  Out of Stock (0 {p.unit || "pcs"})
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 bg-green-100 text-green-800 font-bold rounded text-[10px]">
+                                  Stock: {p.current_stock} {p.unit || "pcs"}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

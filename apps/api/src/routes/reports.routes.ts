@@ -2,13 +2,14 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabaseAdmin } from '../config/supabaseAdmin';
 import { MASTER_PRODUCTS } from '../config/masterCatalog';
+import { getShopStatus, setShopStatus, deleteShopStatus, getAllShopStatuses } from '../config/shopStatusStore';
 import fs from 'fs';
 import path from 'path';
 
 const router = Router();
 
 // Helper to seed or update default 20 Franchise Standard Products for a shop (944 units / ₹3,00,000 value)
-async function seedDefaultProducts(shopId: string, allocateStandardStock: boolean = true) {
+async function seedDefaultProducts(shopId: string, allocateStandardStock: boolean = false, resetStockToZero: boolean = false) {
   try {
     // 1. Fetch or create categories
     const categoryNames = ["Mastitis", "Accessories", "Hygiene", "Diagnostic Kits", "Feed Supplement", "Breeding Tool", "General"];
@@ -74,6 +75,14 @@ async function seedDefaultProducts(shopId: string, allocateStandardStock: boolea
               category_id: catId,
               image_url: p.image_url,
               unit: p.unit
+            })
+            .eq('id', matchedProd.id);
+        } else if (resetStockToZero) {
+          await supabaseAdmin
+            .from('products')
+            .update({
+              current_stock: 0,
+              opening_stock: 0
             })
             .eq('id', matchedProd.id);
         }
@@ -152,8 +161,10 @@ router.get('/me', requireAuth, async (req: AuthRequest, res: Response) => {
       shop = s;
 
       if (shop) {
-        // Automatically check and seed default products if this shop has 0 products
-        await seedDefaultProducts(shop.id);
+        const shopStatus = getShopStatus(shop.id) || shop.status || (shop.is_approved === false ? 'pending' : 'approved');
+        shop.status = shopStatus;
+        // If approved, seed/maintain standard stock; if pending, seed with 0 stock
+        await seedDefaultProducts(shop.id, shopStatus === 'approved');
       }
     }
 
@@ -573,8 +584,8 @@ router.get('/admin/shops', requireAuth, async (req: AuthRequest, res: Response) 
       const totalPotentialMargin = totalStockValue - totalStockCost;
       const marginPercentage = totalStockValue > 0 ? (totalPotentialMargin / totalStockValue) * 100 : 0;
 
-      // Status: if shop has status, use it; otherwise fallback to is_approved or 'approved'
-      const status = shop.status || (shop.is_approved === false ? 'pending' : 'approved');
+      // Status: if shop has status, use persistent store or fallback to is_approved
+      const status = getShopStatus(shop.id) || shop.status || (shop.is_approved === false ? 'pending' : 'approved');
 
       return {
         ...shop,
@@ -615,47 +626,34 @@ router.put('/admin/shops/:shopId/approve', requireAuth, async (req: AuthRequest,
       return res.status(400).json({ error: 'Shop ID is required' });
     }
 
-    // Try updating status column
-    const { data: updated, error: uErr } = await supabaseAdmin
+    // Persist status in reliable persistent store
+    setShopStatus(shopId, status as 'approved' | 'pending');
+
+    // Also try updating shops table in DB if status or is_approved column exists
+    await supabaseAdmin
       .from('shops')
       .update({ status })
-      .eq('id', shopId)
-      .select()
-      .maybeSingle();
+      .eq('id', shopId);
 
-    if (uErr) {
-      // Fallback in case status column is not present
-      const { data: fbUpdated, error: fbErr } = await supabaseAdmin
-        .from('shops')
-        .update({ is_approved: status === 'approved' })
-        .eq('id', shopId)
-        .select()
-        .maybeSingle();
+    await supabaseAdmin
+      .from('shops')
+      .update({ is_approved: status === 'approved' })
+      .eq('id', shopId);
 
-      if (fbErr) {
-        if (status === 'approved') {
-          await seedDefaultProducts(shopId, true);
-        }
-        return res.json({ success: true, message: `Shop approved and 944 standard inventory units allocated`, status });
-      }
-      if (status === 'approved') {
-        await seedDefaultProducts(shopId, true);
-      }
-      return res.json({ success: true, shop: fbUpdated, status, message: `Shop approved and 944 standard inventory units allocated` });
-    }
-
-    // Automatically allocate standard stock (944 units) when admin approves shop
+    // If approved, automatically provision standard franchise stock (944 units across 20 products)
+    // If pending, reset stock back to 0
     if (status === 'approved') {
       await seedDefaultProducts(shopId, true);
+    } else {
+      await seedDefaultProducts(shopId, false, true);
     }
 
     return res.json({ 
       success: true, 
-      shop: updated, 
       status, 
       message: status === 'approved' 
         ? "Shop approved and 944 standard franchise inventory units (₹3.00L value) allocated successfully!" 
-        : "Shop status updated"
+        : "Shop status set to pending and stock reset to 0."
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -784,6 +782,8 @@ router.delete('/admin/shops/:shopId', requireAuth, async (req: AuthRequest, res:
     if (sErr || !targetShop) {
       return res.status(404).json({ error: 'Shop not found' });
     }
+
+    deleteShopStatus(shopId);
 
     // 2. Cascade: Invoices & Invoice Items
     const { data: shopInvoices } = await supabaseAdmin
@@ -1180,7 +1180,8 @@ router.post('/register-shop', async (req: Request, res: Response) => {
     if (pErr) throw pErr;
 
     // 4. Automatically seed all 20 Master Catalog products with stock = 0 for this newly registered shop
-    await seedDefaultProducts(shop.id);
+    setShopStatus(shop.id, 'pending');
+    await seedDefaultProducts(shop.id, false);
 
     return res.json({ success: true, shopId: shop.id });
   } catch (err: any) {

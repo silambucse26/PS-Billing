@@ -37,7 +37,7 @@ export const api = {
     return parseResponse(res);
   },
 
-  async post(route: string, body: any) {
+  async post(route: string, body: any = {}) {
     const session = await supabase.auth.getSession();
     const token = session.data.session?.access_token;
     const res = await fetch(`${API_BASE}${route}`, {
@@ -51,7 +51,7 @@ export const api = {
     return parseResponse(res);
   },
 
-  async put(route: string, body: any) {
+  async put(route: string, body: any = {}) {
     const session = await supabase.auth.getSession();
     const token = session.data.session?.access_token;
     const res = await fetch(`${API_BASE}${route}`, {
