@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, 
-  Receipt, 
+  ReceiptText, 
   Package, 
   Users, 
   Settings, 
@@ -24,7 +24,7 @@ export default function Sidebar() {
 
   const menuItems = [
     { name: "Dashboard", path: "/", icon: LayoutDashboard },
-    { name: "Billing POS", path: "/billing", icon: Receipt },
+    { name: "Billing POS", path: "/billing", icon: ReceiptText },
     { name: "Invoices", path: "/invoices", icon: FileText },
     { name: "Products & Stock", path: "/products", icon: Package },
     { name: "Interested Products", path: "/interested-products", icon: Sparkles, badge: "New" },
@@ -55,11 +55,11 @@ export default function Sidebar() {
           >
             <Menu className="w-6 h-6" />
           </button>
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2.5">
             <img
               src="/logo.png"
               alt="Pashu Central"
-              className="h-10 w-auto object-contain"
+              className="h-11 w-auto max-w-[150px] object-contain"
             />
             <span className="text-xs font-bold text-gray-500 hidden sm:inline-block border-l border-gray-200 pl-2">
               {currentRouteName}
@@ -104,7 +104,7 @@ export default function Sidebar() {
               <img
                 src="/logo.png"
                 alt="Pashu Central"
-                className="h-12 w-auto object-contain"
+                className="h-14 w-auto max-w-[180px] object-contain"
               />
               <button
                 type="button"
@@ -188,18 +188,21 @@ export default function Sidebar() {
       {/* ============================================================== */}
       {/* 3. DESKTOP PERMANENT SIDEBAR (Hidden on mobile/tablet)         */}
       {/* ============================================================== */}
-      <aside className="hidden lg:flex w-64 bg-white border-r border-gray-200 flex-col justify-between h-screen sticky top-0 flex-shrink-0">
-        <div className="p-5">
-          {/* Logo Section */}
-          <div className="flex items-center justify-center mb-6">
+      <aside className="hidden lg:flex w-64 bg-white border-r border-gray-200 flex-col h-screen sticky top-0 flex-shrink-0 z-30 font-sans select-none">
+        {/* Fixed Top Logo Header */}
+        <div className="py-4 px-4 border-b border-gray-100 flex items-center justify-center flex-shrink-0 bg-white">
+          <Link to="/" className="w-full flex items-center justify-center">
             <img
               src="/logo.png"
               alt="Pashu Central"
-              className="h-[130px] w-auto max-w-[220px] object-contain"
+              className="h-20 w-auto max-w-[210px] object-contain hover:scale-[1.02] transition-transform duration-200"
             />
-          </div>
+          </Link>
+        </div>
 
-          <nav className="space-y-1">
+        {/* Scrollable Navigation Menu (Scrolls smoothly on any screen height) */}
+        <div className="flex-1 overflow-y-auto px-3.5 py-3 min-h-0 space-y-1">
+          <nav className="space-y-1 font-sans">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
@@ -207,31 +210,42 @@ export default function Sidebar() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm sm:text-base transition-all ${
                     isActive
-                      ? "bg-green-50 text-green-700 border border-green-200 font-bold"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      ? "bg-green-50 text-green-800 border border-green-200 font-extrabold shadow-2xs"
+                      : "text-gray-700 hover:bg-gray-100 hover:text-gray-950 font-semibold"
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className="w-5 h-5" />
-                    {item.name}
+                    <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? "text-green-700" : "text-gray-500"}`} />
+                    <span className="truncate">{item.name}</span>
                   </div>
                   {item.badge && (
-                    <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full bg-emerald-600 text-white shadow-2xs">
+                    <span className="px-2 py-0.5 text-xs font-black uppercase tracking-wider rounded-full bg-emerald-600 text-white shadow-2xs">
                       {item.badge}
                     </span>
                   )}
                 </Link>
               );
             })}
+
+            {/* In-Nav Logout Shortcut */}
+            <button
+              type="button"
+              onClick={() => setShowLogoutModal(true)}
+              className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm sm:text-base text-red-600 hover:bg-red-50 hover:text-red-700 font-bold transition-all cursor-pointer mt-3 border border-transparent hover:border-red-200"
+            >
+              <LogOut className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <span>Logout</span>
+            </button>
           </nav>
         </div>
 
-        <div className="p-5 border-t border-gray-200">
+        {/* Pinned Bottom User Card & Prominent Logout Button (Always Visible) */}
+        <div className="p-3.5 border-t border-gray-200 bg-white flex-shrink-0 font-sans shadow-xs">
           <Link
             to="/profile"
-            className="flex items-center gap-3 mb-4 p-2 -mx-2 rounded-xl hover:bg-gray-50 transition-colors group cursor-pointer"
+            className="flex items-center gap-3 mb-2.5 p-2 rounded-xl hover:bg-gray-50 transition-colors group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-green-50 border border-green-200 p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
               {profile?.avatar_url ? (
@@ -241,19 +255,20 @@ export default function Sidebar() {
               )}
             </div>
             <div className="overflow-hidden flex-1">
-              <div className="text-sm font-bold text-gray-900 truncate group-hover:text-green-700 transition-colors">
+              <div className="text-sm font-extrabold text-gray-950 truncate group-hover:text-green-700 transition-colors">
                 {profile?.full_name || "User Account"}
               </div>
-              <div className="text-xs text-gray-500 capitalize">{profile?.role?.replace("_", " ") || "Staff"}</div>
+              <div className="text-xs text-gray-500 capitalize font-medium truncate">{profile?.role?.replace("_", " ") || "Staff"}</div>
             </div>
           </Link>
+
           <button
             type="button"
             onClick={() => setShowLogoutModal(true)}
-            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-xl transition-all cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-extrabold text-red-600 bg-red-50 hover:bg-red-100 hover:text-red-700 border border-red-200/80 rounded-xl transition-all cursor-pointer shadow-2xs"
           >
             <LogOut className="w-4 h-4" />
-            Logout
+            <span>Sign Out / Logout</span>
           </button>
         </div>
       </aside>

@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import Sidebar from "../components/Sidebar";
 import { 
   Search, 
-  Receipt, 
+  ReceiptText, 
   Store, 
   User, 
   Phone, 
@@ -12,19 +12,23 @@ import {
   Calendar, 
   CreditCard, 
   TrendingUp, 
-  DollarSign, 
+  IndianRupee, 
   CheckCircle, 
   AlertCircle,
   RefreshCw,
   MessageSquare,
   Send,
   Check,
-  X
+  X,
+  Printer,
+  Bluetooth
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useBluetoothPrinter } from "../context/BluetoothPrinterContext";
+import type { InvoicePrintData } from "../utils/bluetoothPrinter";
 
 export default function Invoices() {
-  const { profile } = useAuth();
+  const { profile, shop } = useAuth();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -39,6 +43,60 @@ export default function Invoices() {
   const [bulkSentStatus, setBulkSentStatus] = useState<Record<string, boolean>>({});
   const [manualPhoneInvoice, setManualPhoneInvoice] = useState<any | null>(null);
   const [manualPhoneNumber, setManualPhoneNumber] = useState("");
+
+  // Bluetooth Printer Hook
+  const { 
+    isConnected: isBtConnected, 
+    printInvoice: printInvoiceBt, 
+    setShowPrinterModal,
+    printViaBrowser
+  } = useBluetoothPrinter();
+  const [printingInvId, setPrintingInvId] = useState<string | null>(null);
+
+  const handlePrintBluetoothInvoice = async (inv: any) => {
+    try {
+      setPrintingInvId(inv.id);
+      const items: any[] = (inv.items || []).map((it: any) => ({
+        name: it.product?.name || it.description || "Product Item",
+        qty: it.quantity || it.qty || 1,
+        unitPrice: it.unit_price || it.unitPrice || 0,
+        total: it.total_price || it.total || ((it.quantity || 1) * (it.unit_price || 0)),
+        unit: it.product?.unit || "pcs"
+      }));
+
+      const payload: InvoicePrintData = {
+        shopName: inv.shop?.name || shop?.name || "PASHU CENTRAL",
+        shopAddress: inv.shop?.address || shop?.address || "",
+        shopPhone: inv.shop?.phone || shop?.phone || "",
+        shopGstin: inv.shop?.gstin || shop?.gstin || "",
+        invoiceNumber: inv.invoice_number,
+        invoiceDate: inv.invoice_date || inv.created_at,
+        customerName: inv.customer?.name || "Walk-in Customer",
+        customerPhone: inv.customer?.phone || "",
+        items,
+        subtotal: inv.subtotal_amount !== undefined ? Number(inv.subtotal_amount) : Number(inv.total_amount),
+        cgst: inv.cgst_amount ? Number(inv.cgst_amount) : undefined,
+        sgst: inv.sgst_amount ? Number(inv.sgst_amount) : undefined,
+        igst: inv.igst_amount ? Number(inv.igst_amount) : undefined,
+        roundOff: inv.round_off ? Number(inv.round_off) : undefined,
+        totalAmount: Number(inv.total_amount || 0),
+        paymentMode: inv.payment_mode || "CASH"
+      };
+
+      const res = await printInvoiceBt(payload);
+      if (!res.success) {
+        if (res.error && !res.error.includes("cancelled") && !res.error.includes("User cancelled")) {
+          if (confirm(`Bluetooth Print Notice: ${res.error}\n\nWould you like to print this invoice using standard 58mm browser print instead?`)) {
+            printViaBrowser(payload);
+          }
+        }
+      }
+    } catch (err: any) {
+      alert(`Print error: ${err.message}`);
+    } finally {
+      setPrintingInvId(null);
+    }
+  };
 
   useEffect(() => {
     fetchInvoices();
@@ -223,7 +281,7 @@ export default function Invoices() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-3">
-              <Receipt className="w-8 h-8 text-green-600" />
+              <ReceiptText className="w-8 h-8 text-green-600" />
               Invoice History & Billing Records
             </h1>
             <p className="text-sm text-gray-500 mt-1">
@@ -260,6 +318,19 @@ export default function Invoices() {
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-green-600" : ""}`} />
               Refresh
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowPrinterModal(true)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl transition-all shadow-xs cursor-pointer border ${
+                isBtConnected
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                  : "bg-white text-gray-700 border-gray-200 hover:border-blue-400 hover:text-blue-700"
+              }`}
+            >
+              <Bluetooth className={`w-4 h-4 ${isBtConnected ? "text-emerald-600 animate-pulse" : "text-blue-600"}`} />
+              <span>{isBtConnected ? "SC588 Connected" : "Connect SC588"}</span>
+            </button>
           </div>
         </div>
 
@@ -274,7 +345,7 @@ export default function Invoices() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-green-50 border border-green-100 flex items-center justify-center text-green-600">
-              <Receipt className="w-6 h-6" />
+              <ReceiptText className="w-6 h-6" />
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Invoices</p>
@@ -284,7 +355,7 @@ export default function Invoices() {
 
           <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
-              <DollarSign className="w-6 h-6" />
+              <IndianRupee className="w-6 h-6" />
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Billed</p>
@@ -441,7 +512,7 @@ export default function Invoices() {
                           <td className="py-4 px-6 font-bold text-gray-900">
                             <div className="flex items-center gap-2.5">
                               <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-100 flex-shrink-0">
-                                <Receipt className="w-4 h-4" />
+                                <ReceiptText className="w-4 h-4" />
                               </div>
                               <div>
                                 <span className="text-blue-900 block font-black font-mono">{inv.invoice_number}</span>
@@ -533,6 +604,18 @@ export default function Invoices() {
                               >
                                 <MessageSquare className="w-3.5 h-3.5 text-emerald-600 group-hover:text-white" />
                                 <span>{isSentViaWA ? "Sent ✓" : "WhatsApp"}</span>
+                              </button>
+
+                              {/* SC588 Thermal Print Button */}
+                              <button
+                                type="button"
+                                onClick={() => handlePrintBluetoothInvoice(inv)}
+                                disabled={printingInvId === inv.id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-700 hover:bg-gray-800 hover:text-white rounded-lg text-xs font-bold transition-colors border border-gray-200 hover:border-gray-800 cursor-pointer disabled:opacity-50"
+                                title="Print 58mm Thermal Receipt on SC588 Bluetooth"
+                              >
+                                <Printer className={`w-3.5 h-3.5 ${printingInvId === inv.id ? "animate-bounce text-blue-600" : ""}`} />
+                                <span>{printingInvId === inv.id ? "Printing..." : "Print"}</span>
                               </button>
 
                               {/* Download PDF Button */}

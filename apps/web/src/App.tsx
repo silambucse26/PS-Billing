@@ -33,12 +33,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+import { BluetoothPrinterProvider } from "./context/BluetoothPrinterContext";
+import BluetoothPrinterModal from "./components/BluetoothPrinterModal";
+
 export default function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
+      <BluetoothPrinterProvider>
+        <Router>
+          <BluetoothPrinterModal />
+          <Routes>
+            <Route path="/login" element={<Login />} />
           <Route
             path="/"
             element={
@@ -122,6 +127,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
+      </BluetoothPrinterProvider>
     </AuthProvider>
   );
 }

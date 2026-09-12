@@ -3,12 +3,14 @@ import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const navigate = useNavigate();
   const { refreshProfile } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   
   // Registration steps: 1 = Basic Info, 2 = Billing/Tax Details, 3 = Welcome Screen
@@ -101,7 +103,7 @@ export default function Login() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-900 p-4 animate-fade-in">
         <div className="w-full max-w-md p-8 bg-white rounded-2xl shadow-xl border border-gray-200 text-center space-y-6">
           <div className="flex justify-center">
-            <img src="/logo.jpg" alt="Pashu Central" className="h-14 w-auto object-contain" />
+            <img src="/logo.png" alt="Pashu Central" className="h-18 w-auto max-w-[220px] object-contain" />
           </div>
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600">
             <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,9 +135,9 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-950 p-4">
       <div className="w-full max-w-md p-8 bg-white rounded-2xl shadow-xl border border-gray-200">
-        <div className="flex justify-center mb-4">
-          <img src="/logo.png" alt="Pashu Central" className="h-16 w-auto object-contain" />
-        </div>
+          <div className="flex justify-center mb-4">
+            <img src="/logo.png" alt="Pashu Central" className="h-20 w-auto max-w-[240px] object-contain" />
+          </div>
         <p className="text-center text-gray-500 text-sm mb-6">Premium Billing Platform</p>
 
         {isRegistering ? (
@@ -182,14 +184,25 @@ export default function Login() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Password *</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100 text-gray-900 placeholder-gray-400"
-                    placeholder="Min. 6 characters"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full p-3 pr-11 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100 text-gray-900 placeholder-gray-400"
+                      placeholder="Min. 6 characters"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1 cursor-pointer"
+                      title={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
 
                 {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
@@ -282,14 +295,25 @@ export default function Login() {
             
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100 text-gray-900 placeholder-gray-400"
-                placeholder="Enter password"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full p-3 pr-11 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100 text-gray-900 placeholder-gray-400"
+                  placeholder="Enter password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1 cursor-pointer"
+                  title={showPassword ? "Hide password" : "Show password"}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
 
             {error && <p className="text-red-500 text-sm font-medium">{error}</p>}

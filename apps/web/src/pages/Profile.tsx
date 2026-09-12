@@ -12,8 +12,16 @@ import {
   Mail, 
   Building,
   Image as ImageIcon,
-  CheckCircle2
+  CheckCircle2,
+  Type,
+  Check,
+  Printer,
+  Bluetooth,
+  Power,
+  RefreshCw,
+  HelpCircle
 } from "lucide-react";
+import { useBluetoothPrinter } from "../context/BluetoothPrinterContext";
 
 export default function Profile() {
   const { user, profile, shop, refreshProfile } = useAuth();
@@ -37,7 +45,100 @@ export default function Profile() {
   const [shopSuccess, setShopSuccess] = useState<string | null>(null);
   const [shopError, setShopError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"user" | "shop">("user");
+  const [activeTab, setActiveTab] = useState<"user" | "shop" | "appearance" | "printer">("user");
+  const {
+    isConnected: isBtConnected,
+    isConnecting: isBtConnecting,
+    isPrinting: isBtPrinting,
+    printerName,
+    isSupported: isBtSupported,
+    autoPrint,
+    setAutoPrint,
+    connect: connectBt,
+    disconnect: disconnectBt,
+    printTestReceipt
+  } = useBluetoothPrinter();
+  const [testResult, setTestResult] = useState<string | null>(null);
+
+  const [fontSize, setFontSize] = useState<string>(() => {
+    return localStorage.getItem("pc_font_size") || "medium";
+  });
+  const [fontStyle, setFontStyle] = useState<string>(() => {
+    return localStorage.getItem("pc_font_style") || "inter";
+  });
+
+  const fontStylesList = [
+    {
+      id: "inter",
+      name: "Inter",
+      badge: "Clean Modern (Default)",
+      family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      desc: "Ultra-crisp, neutral, highly legible modern dashboard style.",
+      sampleHeading: "Super Admin Central Dashboard"
+    },
+    {
+      id: "roboto",
+      name: "Roboto",
+      badge: "Neutral Corporate",
+      family: "'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      desc: "Crisp, reliable, and widely familiar corporate sans-serif.",
+      sampleHeading: "Super Admin Central Dashboard"
+    },
+    {
+      id: "outfit",
+      name: "Outfit",
+      badge: "Friendly Rounded",
+      family: "'Outfit', sans-serif",
+      desc: "Soft curved geometric aesthetic with modern warmth.",
+      sampleHeading: "Super Admin Central Dashboard"
+    },
+    {
+      id: "opensans",
+      name: "Open Sans",
+      badge: "Humanist Legible",
+      family: "'Open Sans', sans-serif",
+      desc: "Classic open forms optimized for effortless reading.",
+      sampleHeading: "Super Admin Central Dashboard"
+    },
+    {
+      id: "jakarta",
+      name: "Plus Jakarta Sans",
+      badge: "Bold Display",
+      family: "'Plus Jakarta Sans', sans-serif",
+      desc: "Punchy, contemporary geometric display typography.",
+      sampleHeading: "Super Admin Central Dashboard"
+    },
+    {
+      id: "system",
+      name: "System UI",
+      badge: "Native OS",
+      family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+      desc: "Fast, native operating system system font.",
+      sampleHeading: "Super Admin Central Dashboard"
+    }
+  ];
+
+  const handleFontStyleChange = (styleId: string) => {
+    setFontStyle(styleId);
+    localStorage.setItem("pc_font_style", styleId);
+    const chosen = fontStylesList.find(f => f.id === styleId);
+    if (chosen) {
+      document.documentElement.style.setProperty('--app-font-family', chosen.family);
+      document.documentElement.style.fontFamily = chosen.family;
+    }
+  };
+
+  const handleFontSizeChange = (size: "small" | "medium" | "large" | "xlarge") => {
+    setFontSize(size);
+    localStorage.setItem("pc_font_size", size);
+    const fontSizesMap: Record<string, string> = {
+      small: "14px",
+      medium: "16px",
+      large: "18px",
+      xlarge: "20px",
+    };
+    document.documentElement.style.fontSize = fontSizesMap[size] || "16px";
+  };
 
   const userFileRef = useRef<HTMLInputElement>(null);
   const shopFileRef = useRef<HTMLInputElement>(null);
@@ -261,6 +362,31 @@ export default function Profile() {
           >
             <Store className="w-4 h-4" />
             Shop Branding & Image Setup
+          </button>
+          <button
+            onClick={() => setActiveTab("appearance")}
+            className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "appearance"
+                ? "border-green-600 text-green-700"
+                : "border-transparent text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            <Type className="w-4 h-4" />
+            Website Font Size & Display
+          </button>
+          <button
+            onClick={() => setActiveTab("printer")}
+            className={`pb-3 px-4 text-sm font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
+              activeTab === "printer"
+                ? "border-blue-600 text-blue-700"
+                : "border-transparent text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            <Printer className="w-4 h-4 text-blue-600" />
+            <span>SC588 Bluetooth Printer</span>
+            {isBtConnected && (
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            )}
           </button>
         </div>
 
@@ -579,6 +705,481 @@ export default function Profile() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* --- TAB 3: DASHBOARD FONT STYLE, SIZE & DISPLAY SETTINGS --- */}
+        {activeTab === "appearance" && (
+          <div className="bg-white border border-gray-200 rounded-3xl p-6 sm:p-8 shadow-xs space-y-8 font-sans">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-5">
+              <div>
+                <h3 className="text-xl font-black text-gray-950 flex items-center gap-2.5">
+                  <Type className="w-6 h-6 text-green-600" />
+                  Dashboard Font Style & Display Controls
+                </h3>
+                <p className="text-sm text-gray-500 font-medium mt-1">
+                  Customize the typeface (font family) and scale used across your dashboard, billing POS, and reports.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    handleFontStyleChange("inter");
+                    handleFontSizeChange("medium");
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all cursor-pointer shadow-2xs"
+                >
+                  Reset to Recommended (Inter, Medium)
+                </button>
+              </div>
+            </div>
+
+            {/* SECTION 1: DASHBOARD FONT STYLE (TYPEFACE) */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-base font-extrabold text-gray-900">1. Select Dashboard Font Style</h4>
+                  <p className="text-xs text-gray-500 font-medium mt-0.5">
+                    Choose the font aesthetic that best matches your reading preference.
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2.5 py-1 rounded-lg">
+                  Active: {fontStylesList.find(f => f.id === fontStyle)?.name || "Inter"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {fontStylesList.map((f) => {
+                  const isSelected = fontStyle === f.id;
+                  return (
+                    <div
+                      key={f.id}
+                      onClick={() => handleFontStyleChange(f.id)}
+                      className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between group ${
+                        isSelected
+                          ? "border-green-600 bg-green-50/40 shadow-sm ring-2 ring-green-100"
+                          : "border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50/50"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className={`px-2 py-0.5 text-[11px] font-extrabold rounded-md uppercase tracking-wider ${
+                            isSelected ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600"
+                          }`}>
+                            {f.badge}
+                          </span>
+                          {isSelected && (
+                            <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center shadow-xs">
+                              <Check className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Title rendered in its actual font */}
+                        <h5 
+                          className="text-lg font-black text-gray-950 tracking-tight"
+                          style={{ fontFamily: f.family }}
+                        >
+                          {f.name}
+                        </h5>
+                        <p className="text-xs text-gray-500 font-medium mt-1 leading-relaxed">
+                          {f.desc}
+                        </p>
+                      </div>
+
+                      {/* Live text specimen */}
+                      <div 
+                        className="mt-4 pt-3 border-t border-gray-100 text-sm font-bold text-gray-800"
+                        style={{ fontFamily: f.family }}
+                      >
+                        Super Admin Central Dashboard
+                        <div className="text-xs text-gray-500 font-normal mt-0.5">
+                          ₹9,31,680.00 • 1,876 items in stock
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* SECTION 2: FONT SIZE CONTROLS */}
+            <div className="space-y-4 pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-base font-extrabold text-gray-900">2. Select Global Font Size</h4>
+                  <p className="text-xs text-gray-500 font-medium mt-0.5">
+                    Scale all text across dashboard tables, metrics cards, and invoice displays.
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg">
+                  Active: {fontSize.toUpperCase()}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* 1. Small */}
+                <div
+                  onClick={() => handleFontSizeChange("small")}
+                  className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
+                    fontSize === "small"
+                      ? "border-green-600 bg-green-50/50 shadow-sm ring-2 ring-green-100"
+                      : "border-gray-200 hover:border-gray-300 bg-white"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Compact</span>
+                      {fontSize === "small" && (
+                        <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </div>
+                    <h5 className="text-base font-bold text-gray-950">Small (14px)</h5>
+                    <p className="text-xs text-gray-500 mt-1">High density. Fits more items, table rows and charts on screen.</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-600">
+                    Aa Bb 123 (87.5% Scale)
+                  </div>
+                </div>
+
+                {/* 2. Medium (Default) */}
+                <div
+                  onClick={() => handleFontSizeChange("medium")}
+                  className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
+                    fontSize === "medium"
+                      ? "border-green-600 bg-green-50/50 shadow-sm ring-2 ring-green-100"
+                      : "border-gray-200 hover:border-gray-300 bg-white"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="px-2 py-0.5 bg-green-100 text-green-800 text-[11px] font-extrabold rounded-md uppercase tracking-wider">
+                        Default Standard
+                      </span>
+                      {fontSize === "medium" && (
+                        <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </div>
+                    <h5 className="text-lg font-black text-gray-950">Medium (16px)</h5>
+                    <p className="text-xs text-gray-500 mt-1">Balanced modern sizing designed for high readability.</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-gray-100 text-sm text-gray-700 font-medium">
+                    Aa Bb 123 (100% Scale)
+                  </div>
+                </div>
+
+                {/* 3. Large */}
+                <div
+                  onClick={() => handleFontSizeChange("large")}
+                  className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
+                    fontSize === "large"
+                      ? "border-green-600 bg-green-50/50 shadow-sm ring-2 ring-green-100"
+                      : "border-gray-200 hover:border-gray-300 bg-white"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Enhanced</span>
+                      {fontSize === "large" && (
+                        <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </div>
+                    <h5 className="text-xl font-black text-gray-950">Large (18px)</h5>
+                    <p className="text-xs text-gray-500 mt-1">Easier reading from a distance on POS counters and tablet displays.</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-gray-100 text-base text-gray-800 font-semibold">
+                    Aa Bb 123 (112.5% Scale)
+                  </div>
+                </div>
+
+                {/* 4. Extra Large */}
+                <div
+                  onClick={() => handleFontSizeChange("xlarge")}
+                  className={`p-5 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
+                    fontSize === "xlarge"
+                      ? "border-green-600 bg-green-50/50 shadow-sm ring-2 ring-green-100"
+                      : "border-gray-200 hover:border-gray-300 bg-white"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Maximum</span>
+                      {fontSize === "xlarge" && (
+                        <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </div>
+                    <h5 className="text-2xl font-black text-gray-950">Extra Large (20px)</h5>
+                    <p className="text-xs text-gray-500 mt-1">Maximum readability with ultra-clear large text for high visibility.</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-gray-100 text-lg text-gray-900 font-black">
+                    Aa Bb 123 (125% Scale)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 3: LIVE DASHBOARD PREVIEW SIMULATOR */}
+            <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-slate-500 uppercase tracking-wider">
+                  Live Dashboard Visual Preview
+                </span>
+                <span className="text-xs font-bold text-green-800 bg-green-100 px-3 py-1 rounded-full">
+                  Font: {fontStylesList.find(f => f.id === fontStyle)?.name} • Size: {fontSize.toUpperCase()}
+                </span>
+              </div>
+
+              {/* Exact Mock of the Dashboard Header and Cards from the User's Screenshot */}
+              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs space-y-5">
+                {/* Shop Banner Mock */}
+                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl sm:text-2xl font-black text-gray-950">
+                        {shop?.name || "Pashucentral of theni"}
+                      </span>
+                      <span className="text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> VERIFIED STORE
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md inline-block mt-1">
+                      Central Admin
+                    </span>
+                  </div>
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">
+                    ● POS & Store Active
+                  </span>
+                </div>
+
+                {/* Dashboard Title Mock */}
+                <div>
+                  <h3 className="text-2xl sm:text-3xl font-black text-gray-950 tracking-tight">
+                    Super Admin Central Dashboard
+                  </h3>
+                  <p className="text-sm text-gray-500 font-medium mt-0.5">
+                    Real-time network intelligence, franchise revenue, and inventory valuation across all registered shops.
+                  </p>
+                </div>
+
+                {/* KPI Cards Mock */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                      Period Revenue
+                    </span>
+                    <div className="text-2xl font-black text-gray-950 mt-1">₹0.00</div>
+                    <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded mt-2 inline-block">
+                      ₹0 AOV • 0 Invoices
+                    </span>
+                  </div>
+
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                      Profit Margin
+                    </span>
+                    <div className="text-2xl font-black text-emerald-600 mt-1">₹0.00</div>
+                    <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded mt-2 inline-block">
+                      0.0% Margin Rate
+                    </span>
+                  </div>
+
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                      Invoices Generated
+                    </span>
+                    <div className="text-2xl font-black text-purple-700 mt-1">0</div>
+                    <span className="text-xs text-gray-500 font-medium block mt-2">
+                      Collected: ₹0
+                    </span>
+                  </div>
+
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-2xs">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
+                      Live Stock Worth
+                    </span>
+                    <div className="text-2xl font-black text-blue-700 mt-1">₹9,31,680.00</div>
+                    <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded mt-2 inline-block">
+                      1,876 items in stock
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 4: SC588 BLUETOOTH THERMAL PRINTER SETUP --- */}
+        {activeTab === "printer" && (
+          <div className="bg-white border border-gray-200 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6 animate-fade-in">
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2.5">
+                <Printer className="w-6 h-6 text-blue-600" />
+                SC588 Bluetooth Portable Thermal Printer Setup
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Wirelessly print customer tax receipts directly on your 58mm mobile thermal printer from POS Billing and Invoices.
+              </p>
+            </div>
+
+            {/* Connection Status Box */}
+            <div className={`p-6 rounded-2xl border transition-all ${
+              isBtConnected ? "bg-emerald-50/80 border-emerald-300" : "bg-gray-50 border-gray-200"
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                    isBtConnected ? "bg-emerald-600 text-white shadow-md shadow-emerald-200" : "bg-gray-200 text-gray-500"
+                  }`}>
+                    <Bluetooth className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Hardware Status</div>
+                    <div className="text-lg font-black text-gray-900 flex items-center gap-2">
+                      {isBtConnected ? (
+                        <>
+                          <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>Connected: <strong className="text-emerald-800">{printerName || "SC588"}</strong></span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-3 h-3 rounded-full bg-gray-400" />
+                          <span>Not Connected</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {isBtConnected ? "Printer is online and ready to print sales slips." : "Connect your portable Bluetooth printer to enable instant wireless printing."}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {isBtConnected ? (
+                    <button
+                      type="button"
+                      onClick={disconnectBt}
+                      className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-xl border border-red-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Power className="w-4 h-4" />
+                      Disconnect
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setTestResult(null);
+                        const ok = await connectBt();
+                        if (ok) {
+                          setTestResult("SC588 Connected successfully! ✓");
+                          setTimeout(() => setTestResult(null), 3000);
+                        }
+                      }}
+                      disabled={isBtConnecting}
+                      className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl shadow-lg hover:shadow-blue-200 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isBtConnecting ? "animate-spin" : ""}`} />
+                      <span>{isBtConnecting ? "Pairing..." : "Pair & Connect SC588"}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {testResult && (
+                <div className="mt-4 p-3 bg-emerald-100/80 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold text-center animate-fade-in">
+                  {testResult}
+                </div>
+              )}
+            </div>
+
+            {/* Actions & Test Print */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  Verification & Diagnostic
+                </div>
+                <p className="text-xs text-gray-600">
+                  Press the button below to print a 58mm test slip with Pashu Central branding to verify thermal feed and ink head alignment.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setTestResult("Printing 58mm test receipt on SC588...");
+                    const res = await printTestReceipt();
+                    if (res.success) {
+                      setTestResult("Test receipt printed successfully! ✓");
+                    } else {
+                      setTestResult(`Test failed: ${res.error || "Check printer connection"}`);
+                    }
+                    setTimeout(() => setTestResult(null), 4000);
+                  }}
+                  disabled={isBtPrinting || isBtConnecting}
+                  className="w-full py-3 bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  <Printer className={`w-4 h-4 ${isBtPrinting ? "animate-bounce" : ""}`} />
+                  <span>{isBtPrinting ? "Printing to SC588..." : "Print Test Receipt (58mm)"}</span>
+                </button>
+              </div>
+
+              <div className="p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  Automation Preference
+                </div>
+                <label className="flex items-start justify-between gap-4 cursor-pointer">
+                  <div>
+                    <div className="text-sm font-bold text-gray-800">Auto-Print on Invoice Creation</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Whenever you click "Generate Invoice" in POS Billing, automatically transmit the bill to your SC588 printer without needing extra clicks.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoPrint}
+                    onChange={(e) => setAutoPrint(e.target.checked)}
+                    className="w-5 h-5 text-blue-600 rounded-lg focus:ring-blue-500 cursor-pointer accent-blue-600 mt-1"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Quick Setup Guide */}
+            <div className="border-t border-gray-200 pt-5 space-y-3">
+              <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-blue-600" />
+                Easy SC588 Mobile Printer Pairing Guide
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="p-3.5 bg-white border border-gray-200 rounded-xl space-y-1 shadow-2xs">
+                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-black flex items-center justify-center text-[11px]">1</div>
+                  <div className="font-bold text-gray-900">Power On Printer</div>
+                  <div className="text-gray-500 text-[11px]">Turn on your SC588 thermal printer and make sure the paper roll is inserted correctly.</div>
+                </div>
+                <div className="p-3.5 bg-white border border-gray-200 rounded-xl space-y-1 shadow-2xs">
+                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-black flex items-center justify-center text-[11px]">2</div>
+                  <div className="font-bold text-gray-900">Turn On Bluetooth</div>
+                  <div className="text-gray-500 text-[11px]">Ensure Bluetooth is switched on in your computer or mobile device settings.</div>
+                </div>
+                <div className="p-3.5 bg-white border border-gray-200 rounded-xl space-y-1 shadow-2xs">
+                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 font-black flex items-center justify-center text-[11px]">3</div>
+                  <div className="font-bold text-gray-900">Pair in Browser</div>
+                  <div className="text-gray-500 text-[11px]">Click "Pair & Connect SC588", pick your printer from the list, and start printing receipts!</div>
+                </div>
+              </div>
+              {!isBtSupported && (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold">
+                  ⚠️ Note: Web Bluetooth is not supported in this browser. Please open Pashu Central in Google Chrome, Microsoft Edge, or Samsung Internet to pair with your SC588 printer.
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>

@@ -7,8 +7,11 @@ import { supabase } from "../lib/supabaseClient";
 import Sidebar from "../components/Sidebar";
 import { 
   Package, Plus, Minus, Trash2, ShoppingCart, Search, 
-  MessageSquare, Download, CheckCircle, Send, Check
+  MessageSquare, Download, CheckCircle, Send, Check,
+  Printer, Bluetooth
 } from "lucide-react";
+import { useBluetoothPrinter } from "../context/BluetoothPrinterContext";
+import type { InvoicePrintData } from "../utils/bluetoothPrinter";
 
 export default function Billing() {
   const { shop } = useAuth();
@@ -20,6 +23,18 @@ export default function Billing() {
   const [paymentMode, setPaymentMode] = useState("cash");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Bluetooth Printer (SC588) Hook
+  const { 
+    isConnected: isBtConnected, 
+    printerName, 
+    printInvoice: printInvoiceBt, 
+    isPrinting: isBtPrinting,
+    setShowPrinterModal,
+    autoPrint,
+    printViaBrowser
+  } = useBluetoothPrinter();
+  const [btPrintStatusMsg, setBtPrintStatusMsg] = useState<string | null>(null);
 
   // Success Modal state for 1-click WhatsApp share
   const [createdInvoice, setCreatedInvoice] = useState<any | null>(null);
@@ -192,10 +207,16 @@ export default function Billing() {
         paymentMode,
         totalAmount: totals.totalAmount,
         cartItems: [...cart],
-        date: new Date()
+        date: new Date(),
+        totals: { ...totals }
       };
 
       setCreatedInvoice(createdRecord);
+
+      // Auto trigger Bluetooth SC588 print if enabled
+      if (autoPrint) {
+        handlePrintBluetooth(createdRecord);
+      }
 
       // Auto trigger WhatsApp if customer phone exists
       if (customerPhone.trim().length >= 10) {
@@ -219,6 +240,51 @@ export default function Billing() {
       setError(e.message || "Failed to create invoice");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getInvoicePrintPayload = (inv: any): InvoicePrintData => {
+    return {
+      shopName: shop?.name || "PASHU CENTRAL",
+      shopAddress: shop?.address || "",
+      shopPhone: shop?.phone || "",
+      shopGstin: shop?.gstin || "",
+      invoiceNumber: inv.invoice_number,
+      invoiceDate: inv.date || new Date(),
+      customerName: inv.customerName,
+      customerPhone: inv.customerPhone,
+      items: (inv.cartItems || []).map((item: any) => ({
+        name: item.name,
+        qty: item.qty || 1,
+        unitPrice: item.unitPrice || 0,
+        total: (item.qty || 1) * (item.unitPrice || 0),
+        unit: item.unit || "pcs"
+      })),
+      subtotal: inv.totals?.subtotal !== undefined ? inv.totals.subtotal : totals.subtotal,
+      cgst: inv.totals?.cgst !== undefined ? inv.totals.cgst : totals.cgst,
+      sgst: inv.totals?.sgst !== undefined ? inv.totals.sgst : totals.sgst,
+      igst: inv.totals?.igst !== undefined ? inv.totals.igst : totals.igst,
+      roundOff: inv.totals?.roundOff !== undefined ? inv.totals.roundOff : totals.roundOff,
+      totalAmount: inv.totalAmount,
+      paymentMode: inv.paymentMode
+    };
+  };
+
+  const handlePrintBluetooth = async (inv: any) => {
+    try {
+      setBtPrintStatusMsg("Connecting & sending bill to SC588...");
+      const payload = getInvoicePrintPayload(inv);
+      const res = await printInvoiceBt(payload);
+      if (res.success) {
+        setBtPrintStatusMsg("Printed successfully on SC588! ✓");
+        setTimeout(() => setBtPrintStatusMsg(null), 3000);
+      } else {
+        setBtPrintStatusMsg(`Notice: ${res.error || "Could not print"}`);
+        setTimeout(() => setBtPrintStatusMsg(null), 4000);
+      }
+    } catch (err: any) {
+      setBtPrintStatusMsg(`Error: ${err.message}`);
+      setTimeout(() => setBtPrintStatusMsg(null), 4000);
     }
   };
 
@@ -334,9 +400,23 @@ export default function Billing() {
     <div className="flex flex-col lg:flex-row bg-gray-50 min-h-screen text-gray-900">
       <Sidebar />
       <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto space-y-6 min-w-0 pb-28 lg:pb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">POS Billing</h1>
-          <p className="text-xs text-gray-500 mt-1">Create retail tax invoices and manage checkout instantly.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">POS Billing</h1>
+            <p className="text-xs text-gray-500 mt-1">Create retail tax invoices and manage checkout instantly.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPrinterModal(true)}
+            className={`px-4 py-2.5 rounded-2xl border font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-xs self-start sm:self-auto ${
+              isBtConnected 
+                ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100" 
+                : "bg-white text-gray-700 border-gray-200 hover:border-blue-400 hover:text-blue-700"
+            }`}
+          >
+            <Bluetooth className={`w-4 h-4 ${isBtConnected ? "text-emerald-600 animate-pulse" : "text-blue-600"}`} />
+            <span>{isBtConnected ? `SC588 Connected (${printerName || "Ready"})` : "Connect SC588 Thermal Printer"}</span>
+          </button>
         </div>
 
         {/* 1. CUSTOMER INVOICE INFO (HIGH VISIBILITY SECTION) */}
@@ -794,42 +874,92 @@ export default function Billing() {
 
               {/* Action Buttons */}
               <div className="space-y-3">
-                {/* 1-Click WhatsApp Share */}
+                {/* 1. SC588 BLUETOOTH THERMAL PRINT BUTTON */}
                 <button
-                  onClick={() => handleShareWhatsApp(createdInvoice)}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-black text-base rounded-2xl shadow-lg hover:shadow-emerald-200 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+                  type="button"
+                  onClick={() => handlePrintBluetooth(createdInvoice)}
+                  disabled={isBtPrinting}
+                  className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-98 text-white font-black text-base rounded-2xl shadow-lg hover:shadow-blue-200 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
                 >
-                  <MessageSquare className="w-5 h-5 fill-white" />
+                  <Printer className={`w-5 h-5 ${isBtPrinting ? "animate-bounce" : ""}`} />
+                  <span>
+                    {isBtPrinting
+                      ? "Printing to SC588..."
+                      : isBtConnected
+                        ? `Print Bill (SC588 Ready)`
+                        : "Connect & Print Bill (SC588 Bluetooth)"}
+                  </span>
+                </button>
+
+                {btPrintStatusMsg && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs font-bold text-blue-800 text-center animate-fade-in flex items-center justify-center gap-2">
+                    <Bluetooth className="w-4 h-4 text-blue-600" />
+                    <span>{btPrintStatusMsg}</span>
+                  </div>
+                )}
+
+                {/* 2. 1-Click WhatsApp Share */}
+                <button
+                  type="button"
+                  onClick={() => handleShareWhatsApp(createdInvoice)}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-black text-sm rounded-2xl shadow-md hover:shadow-emerald-200 transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+                >
+                  <MessageSquare className="w-4.5 h-4.5 fill-white" />
                   <span>Share Invoice on WhatsApp (1-Click)</span>
                 </button>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   {/* Download PDF */}
                   <button
+                    type="button"
                     onClick={() => handleDownloadInvoicePdf(createdInvoice.id)}
                     disabled={isDownloadingPdf}
-                    className="py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl border border-blue-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="py-2.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] rounded-xl border border-blue-200 transition-all flex flex-col items-center justify-center gap-1 cursor-pointer disabled:opacity-50 text-center"
                   >
                     <Download className={`w-4 h-4 ${isDownloadingPdf ? "animate-bounce" : ""}`} />
-                    <span>{isDownloadingPdf ? "Downloading..." : "Download PDF"}</span>
+                    <span>{isDownloadingPdf ? "Saving..." : "PDF"}</span>
+                  </button>
+
+                  {/* Browser Thermal Print Fallback */}
+                  <button
+                    type="button"
+                    onClick={() => printViaBrowser(getInvoicePrintPayload(createdInvoice))}
+                    className="py-2.5 px-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[11px] rounded-xl border border-purple-200 transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-center"
+                    title="Open 58mm Browser Thermal Print Dialog"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>58mm Roll</span>
                   </button>
 
                   {/* Copy Text */}
                   <button
+                    type="button"
                     onClick={() => handleCopyWhatsAppText(createdInvoice)}
-                    className="py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl border border-gray-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="py-2.5 px-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-[11px] rounded-xl border border-gray-200 transition-all flex flex-col items-center justify-center gap-1 cursor-pointer text-center"
                   >
                     {copiedWA ? <Check className="w-4 h-4 text-green-600" /> : <Send className="w-4 h-4 text-gray-500" />}
-                    <span>{copiedWA ? "Copied!" : "Copy Summary"}</span>
+                    <span>{copiedWA ? "Copied!" : "Summary"}</span>
                   </button>
                 </div>
 
-                <button
-                  onClick={() => setCreatedInvoice(null)}
-                  className="w-full py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-50 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                >
-                  Close / Start Next Bill
-                </button>
+                <div className="pt-2 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowPrinterModal(true)}
+                    className="text-[11px] text-blue-600 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Bluetooth className="w-3.5 h-3.5" />
+                    Printer Settings
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCreatedInvoice(null)}
+                    className="py-2 px-4 text-gray-500 hover:text-gray-700 hover:bg-gray-100 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  >
+                    Close / Next Bill
+                  </button>
+                </div>
               </div>
             </div>
           </div>

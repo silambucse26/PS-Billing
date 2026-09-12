@@ -1,23 +1,25 @@
-export interface MasterProductItem {
+export interface FranchiseProductModel {
   category: string;
   name: string;
   sku: string;
-  barcode?: string | null;
+  barcode: string;
   mrp: number;
+  sale_price: number;
   purchase_price: number; // Unit Cost
-  sale_price: number;     // Selling Price
-  default_stock: number;  // Quantity (Allocated initial stock)
-  margin_percent: number; // Profit margin %
-  demo_kits: number;      // Allocated demo kits
-  demo_value: number;     // Demo kit value
+  default_stock: number;  // Quantity
+  value: number;          // Total Cost Value = purchase_price * default_stock
+  revenue: number;        // Revenue on Sales = sale_price * default_stock
+  profit: number;         // Profit = revenue - value
+  margin_percent: number; // Margin %
+  demo_kits: number;      // Demo Kits
+  demo_value: number;     // Demo Kits Value
   gst_rate: number;
-  hsn_code: string | null;
+  hsn_code: string;
   unit: string;
-  reorder_level: number;
-  image_url: string | null;
+  image_url: string;
 }
 
-export const MASTER_PRODUCTS: MasterProductItem[] = [
+export const FRANCHISE_PRODUCTS: FranchiseProductModel[] = [
   {
     category: "Mastitis",
     name: "Chimertech CMT Kit 500mL with Paddle",
@@ -27,13 +29,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 450,
     purchase_price: 300,
     default_stock: 100,
+    value: 30000,
+    revenue: 45000,
+    profit: 15000,
     margin_percent: 50,
     demo_kits: 3,
     demo_value: 1350,
     gst_rate: 5,
     hsn_code: "38220019",
     unit: "pcs",
-    reorder_level: 10,
     image_url: "https://chimertech.shop/cdn/shop/files/500mlCMTwithpaddle.jpg?v=1779701780"
   },
   {
@@ -45,13 +49,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 150,
     purchase_price: 100,
     default_stock: 100,
+    value: 10000,
+    revenue: 15000,
+    profit: 5000,
     margin_percent: 50,
     demo_kits: 5,
     demo_value: 750,
     gst_rate: 18,
     hsn_code: "38089199",
     unit: "pcs",
-    reorder_level: 10,
     image_url: "https://chimertech.shop/cdn/shop/files/DipCup1unit8.avif?v=1775634547"
   },
   {
@@ -63,13 +69,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 600,
     purchase_price: 300,
     default_stock: 80,
+    value: 24000,
+    revenue: 48000,
+    profit: 24000,
     margin_percent: 100,
     demo_kits: 2,
     demo_value: 1200,
     gst_rate: 5,
     hsn_code: "30049085",
     unit: "pcs",
-    reorder_level: 10,
     image_url: "https://chimertech.shop/cdn/shop/files/FineKine_1_kg_0.png?v=1779102161"
   },
   {
@@ -81,13 +89,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 3200,
     purchase_price: 2000,
     default_stock: 5,
+    value: 10000,
+    revenue: 16000,
+    profit: 6000,
     margin_percent: 60,
     demo_kits: 0,
     demo_value: 0,
     gst_rate: 5,
     hsn_code: "30049085",
     unit: "pcs",
-    reorder_level: 2,
     image_url: "https://chimertech.shop/cdn/shop/files/FineKine_5Kg_with_Dip_Cup_Combo.png?v=1779879753"
   },
   {
@@ -99,13 +109,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 650,
     purchase_price: 370,
     default_stock: 80,
+    value: 29600,
+    revenue: 52000,
+    profit: 22400,
     margin_percent: 76,
     demo_kits: 2,
     demo_value: 1300,
     gst_rate: 5,
     hsn_code: "30049085",
     unit: "pcs",
-    reorder_level: 10,
     image_url: "https://chimertech.shop/cdn/shop/files/Iogiene1KgwithDipCupCombo9.webp?v=1775629300"
   },
   {
@@ -117,13 +129,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 3000,
     purchase_price: 1900,
     default_stock: 5,
+    value: 9500,
+    revenue: 15000,
+    profit: 5500,
     margin_percent: 58,
     demo_kits: 0,
     demo_value: 0,
     gst_rate: 5,
     hsn_code: "30049085",
     unit: "pcs",
-    reorder_level: 2,
     image_url: "https://chimertech.shop/cdn/shop/files/Iogiene5KgwithDipCupCombo-0.webp?v=1775629790"
   },
   {
@@ -135,13 +149,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 550,
     purchase_price: 380,
     default_stock: 80,
+    value: 30400,
+    revenue: 44000,
+    profit: 13600,
     margin_percent: 45,
     demo_kits: 2,
     demo_value: 1100,
     gst_rate: 5,
     hsn_code: "30049085",
     unit: "pcs",
-    reorder_level: 10,
     image_url: "https://chimertech.shop/cdn/shop/files/MooFoam1KgwithDipCupCombo.webp?v=1775631375"
   },
   {
@@ -153,13 +169,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 525,
     purchase_price: 300,
     default_stock: 50,
+    value: 15000,
+    revenue: 26250,
+    profit: 11250,
     margin_percent: 75,
     demo_kits: 2,
     demo_value: 1050,
     gst_rate: 5,
     hsn_code: "30049085",
     unit: "pcs",
-    reorder_level: 8,
     image_url: "https://chimertech.shop/cdn/shop/files/Mastoveda_Spray_200ml.png?v=1779104160"
   },
   {
@@ -171,13 +189,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 23000,
     purchase_price: 16000,
     default_stock: 1,
+    value: 16000,
+    revenue: 23000,
+    profit: 7000,
     margin_percent: 44,
     demo_kits: 1,
     demo_value: 23000,
     gst_rate: 5,
     hsn_code: "90189099",
     unit: "pcs",
-    reorder_level: 1,
     image_url: "https://chimertech.shop/cdn/shop/files/Untitled_design_19.png?v=1777432292"
   },
   {
@@ -189,13 +209,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 420,
     purchase_price: 300,
     default_stock: 80,
+    value: 24000,
+    revenue: 33600,
+    profit: 9600,
     margin_percent: 40,
     demo_kits: 2,
     demo_value: 840,
     gst_rate: 5,
     hsn_code: "38089199",
     unit: "pcs",
-    reorder_level: 10,
     image_url: "https://chimertech.shop/cdn/shop/files/TicTickTic200mlSpray_71290546-8365-4f92-9c26-aed407707759.webp?v=1775635586"
   },
   {
@@ -207,13 +229,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 250,
     purchase_price: 180,
     default_stock: 75,
+    value: 13500,
+    revenue: 18750,
+    profit: 5250,
     margin_percent: 39,
     demo_kits: 2,
     demo_value: 500,
     gst_rate: 5,
     hsn_code: "38221990",
     unit: "pcs",
-    reorder_level: 10,
     image_url: "https://chimertech.shop/cdn/shop/files/PregKineBovinePregnancyRapidTest-1Test1Test.jpg?v=1775648231"
   },
   {
@@ -225,13 +249,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 1400,
     purchase_price: 1000,
     default_stock: 5,
+    value: 5000,
+    revenue: 7000,
+    profit: 2000,
     margin_percent: 40,
     demo_kits: 0,
     demo_value: 0,
     gst_rate: 18,
     hsn_code: "90318000",
     unit: "pcs",
-    reorder_level: 2,
     image_url: "https://chimertech.shop/cdn/shop/files/Nsure_Aqua_Pack_of_100.avif?v=1779107907"
   },
   {
@@ -243,13 +269,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 200,
     purchase_price: 100,
     default_stock: 30,
+    value: 3000,
+    revenue: 6000,
+    profit: 3000,
     margin_percent: 100,
     demo_kits: 2,
     demo_value: 400,
     gst_rate: 12,
     hsn_code: "30049085",
     unit: "pcs",
-    reorder_level: 5,
     image_url: "https://chimertech.shop/cdn/shop/files/D-Horn_Dehorning_Paste_3g_for_Calves_Chimertech.png?v=1779106039"
   },
   {
@@ -261,13 +289,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 185,
     purchase_price: 90,
     default_stock: 40,
+    value: 3600,
+    revenue: 7400,
+    profit: 3800,
     margin_percent: 106,
     demo_kits: 2,
     demo_value: 370,
     gst_rate: 0,
     hsn_code: "23099090",
     unit: "pcs",
-    reorder_level: 8,
     image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_D-Wormer_100_ml.png?v=1779106048"
   },
   {
@@ -279,13 +309,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 180,
     purchase_price: 150,
     default_stock: 100,
+    value: 15000,
+    revenue: 18000,
+    profit: 3000,
     margin_percent: 20,
     demo_kits: 3,
     demo_value: 540,
     gst_rate: 0,
     hsn_code: "23099090",
     unit: "pcs",
-    reorder_level: 15,
     image_url: "https://chimertech.shop/cdn/shop/files/MineralMax.png?v=1779944665"
   },
   {
@@ -297,13 +329,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 250,
     purchase_price: 180,
     default_stock: 100,
+    value: 18000,
+    revenue: 25000,
+    profit: 7000,
     margin_percent: 39,
     demo_kits: 4,
     demo_value: 1000,
     gst_rate: 0,
     hsn_code: "23099090",
     unit: "pcs",
-    reorder_level: 15,
     image_url: "https://chimertech.shop/cdn/shop/files/Probos_1.png?v=1779945063"
   },
   {
@@ -315,13 +349,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 550,
     purchase_price: 440,
     default_stock: 10,
+    value: 4400,
+    revenue: 5500,
+    profit: 1100,
     margin_percent: 25,
     demo_kits: 2,
     demo_value: 1100,
     gst_rate: 0,
     hsn_code: "23099090",
     unit: "pcs",
-    reorder_level: 3,
     image_url: "https://chimertech.shop/cdn/shop/files/NutraKine_Calcdex_1L.png?v=1779105504"
   },
   {
@@ -333,13 +369,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 28000,
     purchase_price: 25000,
     default_stock: 1,
+    value: 25000,
+    revenue: 28000,
+    profit: 3000,
     margin_percent: 12,
     demo_kits: 1,
     demo_value: 28000,
     gst_rate: 18,
     hsn_code: "90189099",
     unit: "pcs",
-    reorder_level: 1,
     image_url: "https://chimertech.shop/cdn/shop/files/Digitalartificialinseminationgunwithcameraforcattleandhorse_f42b64af-90f5-4738-9892-22a51b2c7464.jpg?v=1775724636"
   },
   {
@@ -351,13 +389,15 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 7500,
     purchase_price: 6000,
     default_stock: 1,
+    value: 6000,
+    revenue: 7500,
+    profit: 1500,
     margin_percent: 25,
     demo_kits: 1,
     demo_value: 7500,
     gst_rate: 5,
     hsn_code: "90181290",
     unit: "pcs",
-    reorder_level: 1,
     image_url: "https://chimertech.shop/cdn/shop/files/EstrusGunCattle.webp?v=1775649104"
   },
   {
@@ -369,24 +409,26 @@ export const MASTER_PRODUCTS: MasterProductItem[] = [
     sale_price: 9000,
     purchase_price: 8000,
     default_stock: 1,
+    value: 8000,
+    revenue: 9000,
+    profit: 1000,
     margin_percent: 13,
     demo_kits: 0,
     demo_value: 0,
     gst_rate: 18,
     hsn_code: "96170012",
     unit: "pcs",
-    reorder_level: 1,
     image_url: "https://chimertech.shop/cdn/shop/files/Portable_Liquid_Nitrogen_LN2_Container_for_Cattle_Semen_Storage_2_Litre.webp?v=1779108459"
   }
 ];
 
-// Summary KPI Totals for Franchise Master Model
-export const FRANCHISE_MODEL_SUMMARY = {
-  totalQuantity: 944,
-  totalCostValue: 300000,
-  totalRevenue: 450000,
-  totalProfit: 150000,
-  overallMarginPercent: 50.0,
+export const FRANCHISE_SUMMARY = {
+  totalProducts: 20,
+  totalStockQuantity: 944,
+  totalInventoryCost: 300000,
+  totalRevenueOnSales: 450000,
+  totalNetProfit: 150000,
+  averageMarginPercent: 50.0,
   totalDemoKits: 36,
   totalDemoValue: 70000
 };

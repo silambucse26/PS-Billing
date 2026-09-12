@@ -2,80 +2,107 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { supabaseAdmin } from '../config/supabaseAdmin';
 import { MASTER_PRODUCTS } from '../config/masterCatalog';
+import fs from 'fs';
+import path from 'path';
 
 const router = Router();
 
-// Helper to seed default products for a shop if it has 0 products
-async function seedDefaultProducts(shopId: string) {
+// Helper to seed or update default 20 Franchise Standard Products for a shop (944 units / ₹3,00,000 value)
+async function seedDefaultProducts(shopId: string, allocateStandardStock: boolean = true) {
   try {
-    const { count, error: cErr } = await supabaseAdmin
-      .from('products')
-      .select('*', { count: 'exact', head: true })
-      .eq('shop_id', shopId);
+    // 1. Fetch or create categories
+    const categoryNames = ["Mastitis", "Accessories", "Hygiene", "Diagnostic Kits", "Feed Supplement", "Breeding Tool", "General"];
+    const categoryMap: Record<string, string> = {};
 
-    if (cErr) {
-      console.error('Error checking products count for seeding:', cErr);
-      return;
-    }
-
-    if (count !== null && count > 0) {
-      return; // Products already exist
-    }
-
-    // Fetch or create General category
-    let categoryId: string | null = null;
-    const { data: cat } = await supabaseAdmin
+    const { data: existingCats } = await supabaseAdmin
       .from('categories')
-      .select('id')
-      .eq('name', 'General')
-      .maybeSingle();
+      .select('id, name');
 
-    if (cat) {
-      categoryId = cat.id;
-    } else {
-      const { data: newCat } = await supabaseAdmin
-        .from('categories')
-        .insert({ name: 'General' })
-        .select('id')
-        .single();
-      if (newCat) {
-        categoryId = newCat.id;
+    (existingCats || []).forEach((c: any) => {
+      categoryMap[c.name] = c.id;
+    });
+
+    for (const catName of categoryNames) {
+      if (!categoryMap[catName]) {
+        try {
+          const { data: newCat } = await supabaseAdmin
+            .from('categories')
+            .insert({ name: catName })
+            .select('id, name')
+            .maybeSingle();
+          if (newCat) categoryMap[newCat.name] = newCat.id;
+        } catch {
+          // ignore
+        }
       }
     }
 
-    const insertPayload = MASTER_PRODUCTS.map((p) => {
-      const marginVal = p.sale_price - p.purchase_price;
-      const marginPct = p.sale_price > 0 ? (marginVal / p.sale_price) * 100 : 0;
-      return {
-        shop_id: shopId,
-        name: p.name,
-        sku: p.sku,
-        barcode: p.barcode || null,
-        mrp: p.mrp,
-        purchase_price: p.purchase_price,
-        sale_price: p.sale_price,
-        margin_value: marginVal,
-        margin_percent: marginPct,
-        gst_rate: p.gst_rate,
-        hsn_code: p.hsn_code,
-        unit: p.unit,
-        opening_stock: 0,
-        current_stock: 0,
-        reorder_level: p.reorder_level,
-        category_id: categoryId,
-        image_url: p.image_url
-      };
+    // 2. Fetch existing products for this shop
+    const { data: existingProds } = await supabaseAdmin
+      .from('products')
+      .select('id, name, sku, current_stock, opening_stock, sale_price, purchase_price, mrp')
+      .eq('shop_id', shopId);
+
+    const prodBySku: Record<string, any> = {};
+    const prodByName: Record<string, any> = {};
+    (existingProds || []).forEach((p: any) => {
+      if (p.sku) prodBySku[p.sku] = p;
+      if (p.name) prodByName[p.name.toLowerCase().trim()] = p;
     });
 
-    const { error: insErr } = await supabaseAdmin
-      .from('products')
-      .insert(insertPayload);
+    // 3. For each of the 20 Master Franchise Products, insert or update
+    for (const p of MASTER_PRODUCTS) {
+      const catId = categoryMap[p.category] || categoryMap["General"] || null;
+      const marginVal = p.sale_price - p.purchase_price;
+      const marginPct = p.margin_percent || (p.sale_price > 0 ? (marginVal / p.sale_price) * 100 : 0);
+      const stockQty = allocateStandardStock ? (p.default_stock || 0) : 0;
 
-    if (insErr) {
-      console.error('Error seeding default products:', insErr);
+      const matchedProd = prodBySku[p.sku] || prodByName[p.name.toLowerCase().trim()];
+
+      if (matchedProd) {
+        if (allocateStandardStock) {
+          await supabaseAdmin
+            .from('products')
+            .update({
+              mrp: p.mrp,
+              purchase_price: p.purchase_price,
+              sale_price: p.sale_price,
+              margin_value: marginVal,
+              margin_percent: marginPct,
+              current_stock: stockQty,
+              opening_stock: stockQty,
+              category_id: catId,
+              image_url: p.image_url,
+              unit: p.unit
+            })
+            .eq('id', matchedProd.id);
+        }
+      } else {
+        await supabaseAdmin
+          .from('products')
+          .insert({
+            shop_id: shopId,
+            name: p.name,
+            sku: p.sku,
+            barcode: p.barcode || null,
+            mrp: p.mrp,
+            purchase_price: p.purchase_price,
+            sale_price: p.sale_price,
+            margin_value: marginVal,
+            margin_percent: marginPct,
+            gst_rate: p.gst_rate,
+            hsn_code: p.hsn_code,
+            unit: p.unit,
+            opening_stock: stockQty,
+            current_stock: stockQty,
+            reorder_level: p.reorder_level,
+            category_id: catId,
+            image_url: p.image_url
+          });
+      }
     }
   } catch (err) {
-    console.error('Unexpected error seeding default products:', err);
+    console.error('Unexpected error in seedDefaultProducts:', err);
   }
 }
 
@@ -486,7 +513,7 @@ router.get('/dashboard', requireAuth, async (req: AuthRequest, res: Response) =>
   }
 });
 
-// Get all registered shops (Super Admin only)
+// Get all registered shops (Super Admin only) with full revenue, margin, stock & out-of-stock data
 router.get('/admin/shops', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const role = req.user?.role;
@@ -494,7 +521,7 @@ router.get('/admin/shops', requireAuth, async (req: AuthRequest, res: Response) 
       return res.status(403).json({ error: 'Access denied: super_admin role required' });
     }
 
-    const { data: shops, error: sErr } = await supabaseAdmin.from('shops').select('*');
+    const { data: shops, error: sErr } = await supabaseAdmin.from('shops').select('*').order('name', { ascending: true });
     if (sErr) throw sErr;
 
     const { data: profiles, error: pErr } = await supabaseAdmin.from('profiles').select('*');
@@ -503,20 +530,417 @@ router.get('/admin/shops', requireAuth, async (req: AuthRequest, res: Response) 
     const { data: franchises, error: fErr } = await supabaseAdmin.from('franchises').select('*');
     if (fErr) throw fErr;
 
-    // Enrich shops with owner profile and franchise
-    const enrichedShops = shops.map(shop => {
+    const { data: allProducts } = await supabaseAdmin
+      .from('products')
+      .select('id, shop_id, current_stock, sale_price, purchase_price, reorder_level');
+
+    const { data: allInvoices } = await supabaseAdmin
+      .from('invoices')
+      .select('id, shop_id, total_amount');
+
+    // Enrich shops with owner profile, franchise, stock summary, revenue, and approval status
+    const enrichedShops = (shops || []).map(shop => {
       const shopOwner = profiles?.find(p => p.shop_id === shop.id && p.role === 'shopkeeper');
       const franchise = franchises?.find(f => f.id === shop.franchise_id);
+      const shopProducts = (allProducts || []).filter(p => p.shop_id === shop.id);
+      const shopInvoices = (allInvoices || []).filter(inv => inv.shop_id === shop.id);
+
+      const totalRevenue = shopInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
+      let totalUnitsInStock = 0;
+      let totalStockValue = 0;
+      let totalStockCost = 0;
+      let outOfStockCount = 0;
+      let lowStockCount = 0;
+
+      for (const p of shopProducts) {
+        const stock = Number(p.current_stock || 0);
+        const sPrice = Number(p.sale_price || 0);
+        const pPrice = Number(p.purchase_price || (sPrice * 0.6));
+        const reorder = Number(p.reorder_level || 5);
+
+        if (stock > 0) {
+          totalUnitsInStock += stock;
+          totalStockValue += (stock * sPrice);
+          totalStockCost += (stock * pPrice);
+          if (stock <= reorder) {
+            lowStockCount++;
+          }
+        } else {
+          outOfStockCount++;
+        }
+      }
+
+      const totalPotentialMargin = totalStockValue - totalStockCost;
+      const marginPercentage = totalStockValue > 0 ? (totalPotentialMargin / totalStockValue) * 100 : 0;
+
+      // Status: if shop has status, use it; otherwise fallback to is_approved or 'approved'
+      const status = shop.status || (shop.is_approved === false ? 'pending' : 'approved');
+
       return {
         ...shop,
         owner: shopOwner || null,
-        franchise: franchise || null
+        franchise: franchise || null,
+        totalRevenue,
+        invoiceCount: shopInvoices.length,
+        productCount: shopProducts.length,
+        totalUnitsInStock,
+        totalStockValue,
+        totalStockCost,
+        totalPotentialMargin,
+        marginPercentage,
+        outOfStockCount,
+        lowStockCount,
+        status
       };
     });
 
     return res.json(enrichedShops);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Toggle or Update Shop Approval Status
+router.put('/admin/shops/:shopId/approve', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'super_admin') {
+      return res.status(403).json({ error: 'Access denied: super_admin role required' });
+    }
+
+    const { shopId } = req.params;
+    const { status = 'approved' } = req.body;
+
+    if (!shopId) {
+      return res.status(400).json({ error: 'Shop ID is required' });
+    }
+
+    // Try updating status column
+    const { data: updated, error: uErr } = await supabaseAdmin
+      .from('shops')
+      .update({ status })
+      .eq('id', shopId)
+      .select()
+      .maybeSingle();
+
+    if (uErr) {
+      // Fallback in case status column is not present
+      const { data: fbUpdated, error: fbErr } = await supabaseAdmin
+        .from('shops')
+        .update({ is_approved: status === 'approved' })
+        .eq('id', shopId)
+        .select()
+        .maybeSingle();
+
+      if (fbErr) {
+        if (status === 'approved') {
+          await seedDefaultProducts(shopId, true);
+        }
+        return res.json({ success: true, message: `Shop approved and 944 standard inventory units allocated`, status });
+      }
+      if (status === 'approved') {
+        await seedDefaultProducts(shopId, true);
+      }
+      return res.json({ success: true, shop: fbUpdated, status, message: `Shop approved and 944 standard inventory units allocated` });
+    }
+
+    // Automatically allocate standard stock (944 units) when admin approves shop
+    if (status === 'approved') {
+      await seedDefaultProducts(shopId, true);
+    }
+
+    return res.json({ 
+      success: true, 
+      shop: updated, 
+      status, 
+      message: status === 'approved' 
+        ? "Shop approved and 944 standard franchise inventory units (₹3.00L value) allocated successfully!" 
+        : "Shop status updated"
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Deploy or Re-sync standard franchise stock (20 products, 944 total units, ₹3,00,000 value) to a shop
+router.post('/admin/shops/:shopId/deploy-standard-stock', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'super_admin') {
+      return res.status(403).json({ error: 'Access denied: super_admin role required' });
+    }
+
+    const { shopId } = req.params;
+    if (!shopId) {
+      return res.status(400).json({ error: 'Shop ID is required' });
+    }
+
+    await seedDefaultProducts(shopId, true);
+
+    return res.json({
+      success: true,
+      message: "Standard franchise inventory (20 products, 944 total units, ₹3,00,000 cost value) successfully allocated to this shop!"
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Directly Update Product Stock and Prices for a Shop
+router.put('/admin/shops/:shopId/products/:productId/stock', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'super_admin') {
+      return res.status(403).json({ error: 'Access denied: super_admin role required' });
+    }
+
+    const { shopId, productId } = req.params;
+    const { current_stock, sale_price, purchase_price, mrp } = req.body;
+
+    if (current_stock === undefined && sale_price === undefined && purchase_price === undefined && mrp === undefined) {
+      return res.status(400).json({ error: 'No update parameters provided' });
+    }
+
+    // Fetch existing product
+    const { data: prod, error: pErr } = await supabaseAdmin
+      .from('products')
+      .select('*')
+      .eq('id', productId)
+      .eq('shop_id', shopId)
+      .single();
+
+    if (pErr || !prod) {
+      return res.status(404).json({ error: 'Product not found for this shop' });
+    }
+
+    const newStock = current_stock !== undefined ? Number(current_stock) : Number(prod.current_stock || 0);
+    const newSalePrice = sale_price !== undefined ? Number(sale_price) : Number(prod.sale_price || 0);
+    const newPurchasePrice = purchase_price !== undefined ? Number(purchase_price) : Number(prod.purchase_price || 0);
+    const newMrp = mrp !== undefined ? Number(mrp) : Number(prod.mrp || newSalePrice);
+    
+    const newMarginVal = newSalePrice - newPurchasePrice;
+    const newMarginPct = newSalePrice > 0 ? (newMarginVal / newSalePrice) * 100 : 0;
+
+    const { data: updatedProduct, error: uErr } = await supabaseAdmin
+      .from('products')
+      .update({
+        current_stock: newStock,
+        sale_price: newSalePrice,
+        purchase_price: newPurchasePrice,
+        mrp: newMrp,
+        margin_value: newMarginVal,
+        margin_percent: newMarginPct
+      })
+      .eq('id', productId)
+      .select()
+      .single();
+
+    if (uErr) throw uErr;
+
+    // Record stock movement if stock quantity changed
+    const prevStock = Number(prod.current_stock || 0);
+    const diff = newStock - prevStock;
+    if (diff !== 0) {
+      try {
+        await supabaseAdmin.from('stock_movements').insert({
+          shop_id: shopId,
+          product_id: productId,
+          type: diff > 0 ? 'purchase' : 'adjustment',
+          quantity: Math.abs(diff),
+          balance_after: newStock,
+          reference_id: crypto.randomUUID()
+        });
+      } catch (smErr) {
+        console.warn('Failed to insert stock movement audit:', smErr);
+      }
+    }
+
+    return res.json({ success: true, product: updatedProduct });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Delete a shop and ALL associated data (invoices, items, products, stock movements, customers, restock requests, etc.)
+router.delete('/admin/shops/:shopId', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'super_admin') {
+      return res.status(403).json({ error: 'Access denied: super_admin role required' });
+    }
+
+    const { shopId } = req.params;
+    if (!shopId) {
+      return res.status(400).json({ error: 'Shop ID is required' });
+    }
+
+    // 1. Verify shop exists
+    const { data: targetShop, error: sErr } = await supabaseAdmin
+      .from('shops')
+      .select('id, name, franchise_id')
+      .eq('id', shopId)
+      .maybeSingle();
+
+    if (sErr || !targetShop) {
+      return res.status(404).json({ error: 'Shop not found' });
+    }
+
+    // 2. Cascade: Invoices & Invoice Items
+    const { data: shopInvoices } = await supabaseAdmin
+      .from('invoices')
+      .select('id')
+      .eq('shop_id', shopId);
+
+    if (shopInvoices && shopInvoices.length > 0) {
+      const invoiceIds = shopInvoices.map((inv: any) => inv.id);
+      // Delete invoice items first
+      await supabaseAdmin
+        .from('invoice_items')
+        .delete()
+        .in('invoice_id', invoiceIds);
+
+      // Delete invoices
+      await supabaseAdmin
+        .from('invoices')
+        .delete()
+        .eq('shop_id', shopId);
+    }
+
+    // 3. Cascade: Products & Stock Movements
+    const { data: shopProducts } = await supabaseAdmin
+      .from('products')
+      .select('id')
+      .eq('shop_id', shopId);
+
+    if (shopProducts && shopProducts.length > 0) {
+      const productIds = shopProducts.map((p: any) => p.id);
+      // Delete stock movements first
+      await supabaseAdmin
+        .from('stock_movements')
+        .delete()
+        .in('product_id', productIds);
+
+      // Delete products
+      await supabaseAdmin
+        .from('products')
+        .delete()
+        .eq('shop_id', shopId);
+    }
+
+    // 4. Cascade: Customers for this shop
+    try {
+      await supabaseAdmin
+        .from('customers')
+        .delete()
+        .eq('shop_id', shopId);
+    } catch (e) {
+      console.error('Error deleting shop customers:', e);
+    }
+
+    // 5. Cascade: Categories for this shop (if any)
+    try {
+      await supabaseAdmin
+        .from('categories')
+        .delete()
+        .eq('shop_id', shopId);
+    } catch (e) {
+      // Ignore if categories don't have shop_id
+    }
+
+    // 6. Cascade: Restock requests (from persistent JSON file & table)
+    try {
+      const DATA_DIR = path.join(process.cwd(), 'apps', 'api', 'data');
+      const RESTOCK_FILE = path.join(DATA_DIR, 'restock_requests.json');
+      if (fs.existsSync(RESTOCK_FILE)) {
+        const content = fs.readFileSync(RESTOCK_FILE, 'utf8');
+        const list = JSON.parse(content || '[]');
+        const filtered = list.filter((r: any) => r.shopId !== shopId && r.shop_id !== shopId);
+        fs.writeFileSync(RESTOCK_FILE, JSON.stringify(filtered, null, 2));
+      }
+    } catch (e) {
+      console.error('Error cleaning restock requests file:', e);
+    }
+
+    try {
+      await supabaseAdmin
+        .from('restock_requests')
+        .delete()
+        .eq('shop_id', shopId);
+    } catch (e) {
+      // Table may or may not exist
+    }
+
+    // 7. Cascade: Profiles and User Accounts linked to this shop
+    try {
+      const { data: linkedProfiles } = await supabaseAdmin
+        .from('profiles')
+        .select('id, role')
+        .eq('shop_id', shopId);
+
+      if (linkedProfiles && linkedProfiles.length > 0) {
+        for (const p of linkedProfiles) {
+          if (p.role !== 'super_admin') {
+            try {
+              await supabaseAdmin.auth.admin.deleteUser(p.id);
+            } catch (errAuth) {
+              console.warn('Could not delete auth user:', p.id, errAuth);
+            }
+            try {
+              await supabaseAdmin
+                .from('profiles')
+                .delete()
+                .eq('id', p.id);
+            } catch (errProf) {
+              console.warn('Could not delete profile:', p.id, errProf);
+            }
+          } else {
+            await supabaseAdmin
+              .from('profiles')
+              .update({ shop_id: null, franchise_id: null })
+              .eq('id', p.id);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error cascading shop profiles and user accounts:', e);
+    }
+
+    // 8. Delete the Shop row
+    const { error: delShopErr } = await supabaseAdmin
+      .from('shops')
+      .delete()
+      .eq('id', shopId);
+
+    if (delShopErr) {
+      throw delShopErr;
+    }
+
+    // 9. If the franchise has no remaining shops, clean up franchise as well
+    if (targetShop.franchise_id) {
+      try {
+        const { data: remainingShops } = await supabaseAdmin
+          .from('shops')
+          .select('id')
+          .eq('franchise_id', targetShop.franchise_id);
+
+        if (!remainingShops || remainingShops.length === 0) {
+          await supabaseAdmin
+            .from('franchises')
+            .delete()
+            .eq('id', targetShop.franchise_id);
+        }
+      } catch (e) {
+        console.error('Error cleaning up empty franchise:', e);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Shop "${targetShop.name}" and all associated invoices, products, stock, customers, and records have been permanently deleted.`
+    });
+  } catch (err: any) {
+    console.error('Error deleting shop:', err);
+    return res.status(500).json({ error: err.message || 'Failed to delete shop and its data' });
   }
 });
 

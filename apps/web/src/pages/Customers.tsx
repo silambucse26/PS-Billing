@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import Sidebar from "../components/Sidebar";
-import { Search, User, Phone, MapPin, Plus, X, Check, Store, Receipt, Milk } from "lucide-react";
+import { Search, User, Phone, MapPin, Plus, X, Check, Store, ReceiptText, Milk } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export default function Customers() {
@@ -237,7 +237,7 @@ export default function Customers() {
 
                           <td className="py-4 px-6 text-right font-semibold">
                             <span className="inline-flex items-center gap-1 text-xs text-gray-600 bg-gray-100 px-2.5 py-1 rounded-lg">
-                              <Receipt className="w-3.5 h-3.5 text-gray-500" />
+                              <ReceiptText className="w-3.5 h-3.5 text-gray-500" />
                               {invCount} bill{invCount === 1 ? "" : "s"}
                             </span>
                           </td>

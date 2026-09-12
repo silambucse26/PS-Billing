@@ -8,7 +8,7 @@ import {
   CheckCircle2, 
   XCircle, 
   Clock, 
-  DollarSign, 
+  IndianRupee, 
   RefreshCw, 
   Search, 
   AlertTriangle, 
@@ -160,7 +160,7 @@ export default function AdminRestock() {
 
           <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
-              <DollarSign className="w-6 h-6" />
+              <IndianRupee className="w-6 h-6" />
             </div>
             <div>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Value Requested</p>

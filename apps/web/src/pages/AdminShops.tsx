@@ -1,10 +1,13 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { api } from "../lib/api";
 import { supabase } from "../lib/supabaseClient";
 import Sidebar from "../components/Sidebar";
 import { generateMasterCsvContent } from "../data/masterCatalog";
+import { FRANCHISE_PRODUCTS, FRANCHISE_SUMMARY } from "../data/franchiseInventory";
+import type { FranchiseProductModel } from "../data/franchiseInventory";
 import { 
-  Store, Search, Plus, X, Barcode, Check, Upload, Download, Sparkles, ArrowLeft, Package, Trash2, AlertTriangle, RefreshCw
+  Store, Search, Plus, X, Barcode, Check, Upload, Download, Sparkles, ArrowLeft, Package, Trash2, AlertTriangle, RefreshCw,
+  IndianRupee, TrendingUp, Edit2, ShieldCheck, ShoppingCart, FileSpreadsheet, Layers, Send, ChevronRight, HelpCircle
 } from "lucide-react";
 
 export default function AdminShops() {
@@ -20,6 +23,8 @@ export default function AdminShops() {
   const [search, setSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [shopToDelete, setShopToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [deletingShop, setDeletingShop] = useState(false);
   const [viewingProduct, setViewingProduct] = useState<any | null>(null);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [tempSalePrice, setTempSalePrice] = useState("");
@@ -41,6 +46,158 @@ export default function AdminShops() {
 
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Stock edit modal & shop approval states
+  const [editingStockProduct, setEditingStockProduct] = useState<any | null>(null);
+  const [editStockVal, setEditStockVal] = useState<number | "">("");
+  const [editPurchasePriceVal, setEditPurchasePriceVal] = useState<number | "">("");
+  const [editSalePriceVal, setEditSalePriceVal] = useState<number | "">("");
+  const [editMrpVal, setEditMrpVal] = useState<number | "">("");
+  const [updatingStock, setUpdatingStock] = useState(false);
+  const [approvingShopId, setApprovingShopId] = useState<string | null>(null);
+
+  // Franchise Master Model State
+  const [activeTab, setActiveTab] = useState<"shops" | "franchise_model">("shops");
+  const [selectedDeployShopId, setSelectedDeployShopId] = useState<string>("");
+  const [deployingStock, setDeployingStock] = useState(false);
+  const [franchiseFilterCategory, setFranchiseFilterCategory] = useState("All");
+  const [franchiseSearch, setFranchiseSearch] = useState("");
+
+  const franchiseCategories = ["All", "Mastitis", "Accessories", "Hygiene", "Diagnostic Kits", "Feed Supplement", "Breeding Tool"];
+
+  const filteredFranchiseProducts = useMemo(() => {
+    return FRANCHISE_PRODUCTS.filter(p => {
+      const matchesCat = franchiseFilterCategory === "All" || p.category.toLowerCase() === franchiseFilterCategory.toLowerCase();
+      const matchesSearch = !franchiseSearch || 
+        p.name.toLowerCase().includes(franchiseSearch.toLowerCase()) || 
+        p.category.toLowerCase().includes(franchiseSearch.toLowerCase()) ||
+        p.sku.toLowerCase().includes(franchiseSearch.toLowerCase());
+      return matchesCat && matchesSearch;
+    });
+  }, [franchiseFilterCategory, franchiseSearch]);
+
+  const handleDeployStandardStock = async (shopId: string, shopName: string) => {
+    if (!window.confirm(`Deploy the standard franchise stock package (20 products, 944 total stock units, ₹3,00,000 cost value) to "${shopName}"? Existing master products will have their stock and standard pricing updated.`)) {
+      return;
+    }
+    setDeployingStock(true);
+    setError(null);
+    try {
+      const res = await api.post(`/reports/admin/shops/${shopId}/deploy-standard-stock`);
+      setSuccessMsg(res.message || `Standard franchise inventory (944 units across 20 products) deployed successfully to ${shopName}!`);
+      setTimeout(() => setSuccessMsg(null), 5000);
+      fetchShops();
+      if (selectedShopId === shopId) {
+        fetchShopProducts(shopId);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to deploy standard stock");
+    } finally {
+      setDeployingStock(false);
+    }
+  };
+
+  // Selected shop summary metrics (Full Margin Price calculations)
+  const catalogSummary = useMemo(() => {
+    let totalItems = products.length;
+    let totalUnits = 0;
+    let totalCost = 0;
+    let totalRetail = 0;
+    let outOfStockCount = 0;
+
+    for (const p of products) {
+      const stock = Number(p.current_stock || 0);
+      const sPrice = Number(p.sale_price || 0);
+      const pPrice = Number(p.purchase_price || (sPrice * 0.6));
+      if (stock > 0) {
+        totalUnits += stock;
+        totalRetail += (stock * sPrice);
+        totalCost += (stock * pPrice);
+      } else {
+        outOfStockCount++;
+      }
+    }
+
+    const totalMargin = totalRetail - totalCost;
+    const avgMarginPct = totalRetail > 0 ? (totalMargin / totalRetail) * 100 : 0;
+
+    return {
+      totalItems,
+      totalUnits,
+      totalCost,
+      totalRetail,
+      totalMargin,
+      avgMarginPct,
+      outOfStockCount
+    };
+  }, [products]);
+
+  const handleToggleShopApproval = async (shopId: string, currentStatus: string) => {
+    const nextStatus = currentStatus === "approved" ? "pending" : "approved";
+    setApprovingShopId(shopId);
+    try {
+      await api.put(`/reports/admin/shops/${shopId}/approve`, { status: nextStatus });
+      setShops(prev => prev.map(s => s.id === shopId ? { ...s, status: nextStatus } : s));
+      setSuccessMsg(
+        nextStatus === "approved"
+          ? "Shop approved successfully! Standard 944 units franchise stock and catalog automatically provisioned."
+          : "Shop approval status reverted to pending."
+      );
+      fetchShops();
+      setTimeout(() => setSuccessMsg(null), 4500);
+    } catch (err: any) {
+      setError(err.message || "Failed to update shop approval");
+    } finally {
+      setApprovingShopId(null);
+    }
+  };
+
+  const handleQuickStockStep = async (product: any, delta: number) => {
+    if (!selectedShopId) return;
+    const newStock = Math.max(0, Number(product.current_stock || 0) + delta);
+    try {
+      const res = await api.put(`/reports/admin/shops/${selectedShopId}/products/${product.id}/stock`, {
+        current_stock: newStock
+      });
+      if (res.product) {
+        setProducts(prev => prev.map(p => p.id === product.id ? res.product : p));
+      }
+    } catch (err: any) {
+      alert("Failed to update stock: " + (err.message || "Error"));
+    }
+  };
+
+  const openEditStockModal = (product: any) => {
+    setEditingStockProduct(product);
+    setEditStockVal(product.current_stock ?? 0);
+    setEditPurchasePriceVal(product.purchase_price ?? 0);
+    setEditSalePriceVal(product.sale_price ?? 0);
+    setEditMrpVal(product.mrp ?? product.sale_price ?? 0);
+  };
+
+  const handleSaveStockAndPrice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedShopId || !editingStockProduct) return;
+    setUpdatingStock(true);
+    try {
+      const res = await api.put(`/reports/admin/shops/${selectedShopId}/products/${editingStockProduct.id}/stock`, {
+        current_stock: editStockVal === "" ? 0 : Number(editStockVal),
+        purchase_price: editPurchasePriceVal === "" ? 0 : Number(editPurchasePriceVal),
+        sale_price: editSalePriceVal === "" ? 0 : Number(editSalePriceVal),
+        mrp: editMrpVal === "" ? 0 : Number(editMrpVal)
+      });
+      if (res.product) {
+        setProducts(prev => prev.map(p => p.id === editingStockProduct.id ? res.product : p));
+        setSuccessMsg(`Stock and pricing updated for ${editingStockProduct.name}!`);
+        setTimeout(() => setSuccessMsg(null), 3500);
+      }
+      setEditingStockProduct(null);
+    } catch (err: any) {
+      setError(err.message || "Failed to save stock update");
+    } finally {
+      setUpdatingStock(false);
+    }
+  };
 
   useEffect(() => {
     fetchShops();
@@ -105,6 +262,31 @@ export default function AdminShops() {
       setError(err.message || "Failed to delete product");
     } finally {
       setDeleteConfirmId(null);
+    }
+  };
+
+  const confirmDeleteShop = async () => {
+    if (!shopToDelete) return;
+    setDeletingShop(true);
+    setError(null);
+    try {
+      const res = await api.delete(`/reports/admin/shops/${shopToDelete.id}`);
+      setSuccessMsg(res.message || `Shop "${shopToDelete.name}" and all associated data deleted successfully.`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+
+      if (selectedShopId === shopToDelete.id) {
+        setSelectedShopId(null);
+        setSelectedShopName("");
+        setProducts([]);
+      }
+
+      setShopToDelete(null);
+      fetchShops();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete shop and its data");
+      setShopToDelete(null);
+    } finally {
+      setDeletingShop(false);
     }
   };
 
@@ -390,16 +572,37 @@ export default function AdminShops() {
           {selectedShopId ? (
             /* DRILL-DOWN SHOP PRODUCT INVENTORY VIEW */
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={handleBackToShops}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
-                >
-                  <ArrowLeft className="w-4 h-4 text-green-600" />
-                  Back to Shops List
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={handleBackToShops}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all cursor-pointer shadow-sm"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-green-600" />
+                    Back to Shops List
+                  </button>
+
+                  <button
+                    onClick={() => setShopToDelete({ id: selectedShopId, name: selectedShopName })}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 hover:text-red-700 rounded-xl transition-all cursor-pointer shadow-sm"
+                    title="Permanently Delete This Shop & All Data"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-600" />
+                    <span>Delete Shop</span>
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => handleDeployStandardStock(selectedShopId, selectedShopName)}
+                    disabled={deployingStock}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                    title="Deploy Standard Franchise Package (20 products, 944 stock units, ₹3,00,000 cost value)"
+                  >
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    {deployingStock ? "Deploying 944 Units..." : "Deploy Standard Stock (944 Units)"}
+                  </button>
+
                   <button
                     onClick={handleSyncMasterCatalog}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-green-700 bg-green-50 border border-green-200 hover:bg-green-100 rounded-xl transition-all cursor-pointer shadow-sm"
@@ -444,13 +647,105 @@ export default function AdminShops() {
                 </div>
               </div>
 
-              <div>
-                <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                  <Package className="w-8 h-8 text-green-600" />
-                  Inventory for {selectedShopName}
-                </h1>
-                <p className="text-xs text-gray-500 mt-1">Super Admin product catalog override panel.</p>
+              {/* Header Title & Actions */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                    <Package className="w-8 h-8 text-green-600" />
+                    Inventory for {selectedShopName}
+                  </h1>
+                  <p className="text-sm text-gray-500 mt-1">Super Admin product catalog, live stock allocation, and full margin analysis.</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (selectedShopId) fetchShopProducts(selectedShopId);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                  </button>
+                </div>
               </div>
+
+              {/* Selected Shop Catalog & Full Margin Overview KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* 1. Total Catalog Products */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Catalog Items</span>
+                    <Package className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <div className="text-2xl font-black text-gray-950 mt-2">{catalogSummary.totalItems} Products</div>
+                  <div className="text-xs text-gray-500 mt-1 font-medium">
+                    {catalogSummary.outOfStockCount > 0 ? (
+                      <span className="text-red-700 font-extrabold bg-red-50 px-1.5 py-0.5 rounded">
+                        {catalogSummary.outOfStockCount} Out of Stock
+                      </span>
+                    ) : (
+                      <span className="text-green-700 font-bold">All Products in Stock</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Total Units in Stock */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Live Units</span>
+                    <ShoppingCart className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="text-2xl font-black text-blue-700 mt-2">{catalogSummary.totalUnits} Units</div>
+                  <div className="text-xs text-gray-500 mt-1 font-medium">
+                    Across {catalogSummary.totalItems - catalogSummary.outOfStockCount} stocked items
+                  </div>
+                </div>
+
+                {/* 3. Total Stock Retail Valuation */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Stock Selling Worth</span>
+                    <IndianRupee className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div className="text-2xl font-black text-purple-700 mt-2">
+                    ₹{catalogSummary.totalRetail.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1 font-medium">
+                    Cost Price: ₹{catalogSummary.totalCost.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                {/* 4. Full Margin Potential (Profit) */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Potential Stock Profit</span>
+                    <TrendingUp className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div className="text-2xl font-black text-emerald-600 mt-2">
+                    ₹{catalogSummary.totalMargin.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1 font-medium flex items-center justify-between">
+                    <span>Overall Rate:</span>
+                    <span className="text-emerald-800 font-extrabold bg-emerald-50 px-2 py-0.5 rounded">
+                      {catalogSummary.avgMarginPct.toFixed(1)}% Full Margin
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Zero Stock Warning Banner for New Shops */}
+              {catalogSummary.totalUnits === 0 && (
+                <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3.5">
+                  <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-extrabold text-amber-950">New / Unstocked Shop Inventory Notice</h4>
+                    <p className="text-xs text-amber-800 mt-0.5">
+                      This shop currently has <strong>0 total units in stock</strong> across all products ({catalogSummary.outOfStockCount} out of stock items).
+                      Use the quick <strong>+1, +5, +10</strong> adjusters in the table or click <strong>Edit Stock & Prices</strong> on any product to assign inventory and start billing!
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {successMsg && (
                 <div className="p-4 text-sm text-green-800 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
@@ -470,7 +765,7 @@ export default function AdminShops() {
                 <Search className="w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search products in this shop's stock..."
+                  placeholder="Search products in this shop's stock by name, SKU or barcode..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full bg-transparent text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
@@ -484,17 +779,15 @@ export default function AdminShops() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-sm font-semibold">
-                          <th className="py-4 px-6">Image</th>
-                          <th className="py-4 px-6">Product ID / SKU</th>
-                          <th className="py-4 px-6">Name</th>
-                          <th className="py-4 px-6">Barcode</th>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-xs font-bold uppercase tracking-wider">
+                          <th className="py-4 px-6">Product</th>
+                          <th className="py-4 px-6">SKU / Barcode</th>
                           <th className="py-4 px-6 text-right">MRP</th>
                           <th className="py-4 px-6 text-right">Purchase Price</th>
                           <th className="py-4 px-6 text-right">Selling Price</th>
-                          <th className="py-4 px-6 text-right">Margin (Val / %)</th>
-                          <th className="py-4 px-6 text-center">GST %</th>
-                          <th className="py-4 px-6 text-center">Stock</th>
+                          <th className="py-4 px-6 text-right">Unit Margin</th>
+                          <th className="py-4 px-6 text-right">Full Stock Margin</th>
+                          <th className="py-4 px-6 text-center">Stock & Quick Adjust</th>
                           <th className="py-4 px-6 text-center">Actions</th>
                         </tr>
                       </thead>
@@ -507,7 +800,7 @@ export default function AdminShops() {
                           )
                           .length === 0 ? (
                           <tr>
-                            <td colSpan={11} className="py-8 px-6 text-center text-gray-500">
+                            <td colSpan={9} className="py-8 px-6 text-center text-gray-500">
                               No products found in this shop's inventory.
                             </td>
                           </tr>
@@ -519,70 +812,165 @@ export default function AdminShops() {
                               (p.barcode && p.barcode.includes(search))
                             )
                             .map((p) => {
-                              const marginValue = Number(p.sale_price || 0) - Number(p.purchase_price || 0);
-                              const marginPercent = p.sale_price > 0 ? (marginValue / Number(p.sale_price)) * 100 : 0;
+                              const stock = Number(p.current_stock || 0);
+                              const sPrice = Number(p.sale_price || 0);
+                              const pPrice = Number(p.purchase_price || 0);
+                              const mrpPrice = Number(p.mrp || sPrice);
+                              const marginValue = sPrice - pPrice;
+                              const marginPercent = sPrice > 0 ? (marginValue / sPrice) * 100 : 0;
+                              const totalStockMargin = stock * marginValue;
 
                               return (
                                 <tr 
                                   key={p.id} 
-                                  onClick={() => setViewingProduct(p)}
-                                  className="text-sm hover:bg-gray-150 transition-colors cursor-pointer"
+                                  className="text-sm hover:bg-gray-50 transition-colors"
                                 >
+                                  {/* Product Image & Name */}
                                   <td className="py-4 px-6">
-                                    {p.image_url ? (
-                                      <img
-                                        src={p.image_url}
-                                        alt={p.name}
-                                        className="w-10 h-10 object-cover rounded-lg border border-gray-100"
-                                        onError={(e) => {
-                                          (e.target as HTMLImageElement).src = "https://placehold.co/100x100.png?text=Product";
-                                        }}
-                                      />
-                                    ) : (
-                                      <div className="w-10 h-10 bg-gray-100 text-gray-400 rounded-lg flex items-center justify-center border border-gray-200">
-                                        <Package className="w-5 h-5" />
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-11 h-11 bg-white border border-gray-200 rounded-xl p-1 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-2xs">
+                                        {p.image_url ? (
+                                          <img
+                                            src={p.image_url}
+                                            alt={p.name}
+                                            className="w-full h-full object-contain"
+                                            onError={(e) => {
+                                              (e.target as HTMLImageElement).src = "https://placehold.co/100x100.png?text=Product";
+                                            }}
+                                          />
+                                        ) : (
+                                          <Package className="w-5 h-5 text-gray-400" />
+                                        )}
                                       </div>
-                                    )}
-                                  </td>
-                                  <td className="py-4 px-6 font-mono font-semibold text-gray-700">{p.sku || "N/A"}</td>
-                                  <td className="py-4 px-6 font-bold text-gray-900">{p.name}</td>
-                                  <td className="py-4 px-6 text-gray-600 flex items-center gap-1 mt-3">
-                                    <Barcode className="w-4 h-4 text-gray-400" />
-                                    {p.barcode || "N/A"}
-                                  </td>
-                                  <td className="py-4 px-6 text-right font-semibold text-gray-900">₹{p.mrp ? Number(p.mrp).toFixed(2) : "0.00"}</td>
-                                  <td className="py-4 px-6 text-right text-gray-600">₹{p.purchase_price ? Number(p.purchase_price).toFixed(2) : "0.00"}</td>
-                                  <td className="py-4 px-6 text-right text-gray-950 font-bold">₹{p.sale_price ? Number(p.sale_price).toFixed(2) : "0.00"}</td>
-                                  
-                                  <td className="py-4 px-6 text-right font-semibold text-green-700">
-                                    <div>₹{marginValue.toFixed(2)}</div>
-                                    <div className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-150 inline-block mt-0.5">
-                                      {marginPercent.toFixed(1)}%
+                                      <div>
+                                        <span className="font-extrabold text-gray-950 block">{p.name}</span>
+                                        <span className="text-xs text-gray-500 font-medium">{p.unit || "pcs"} • GST {p.gst_rate || 0}%</span>
+                                      </div>
                                     </div>
                                   </td>
 
-                                  <td className="py-4 px-6 text-center text-gray-600">{p.gst_rate}%</td>
-                                  <td className="py-4 px-6 text-center">
-                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                      p.current_stock <= p.reorder_level
-                                        ? "bg-red-50 text-red-700 border-red-100"
-                                        : "bg-green-50 text-green-700 border-green-100"
-                                    }`}>
-                                      {p.current_stock} {p.unit || "pcs"}
+                                  {/* SKU & Barcode */}
+                                  <td className="py-4 px-6 font-mono text-xs text-gray-600">
+                                    <div>{p.sku || "N/A"}</div>
+                                    {p.barcode && (
+                                      <div className="flex items-center gap-1 text-[11px] text-gray-400 mt-0.5">
+                                        <Barcode className="w-3.5 h-3.5" />
+                                        {p.barcode}
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  {/* MRP */}
+                                  <td className="py-4 px-6 text-right font-medium text-gray-700">
+                                    ₹{mrpPrice.toFixed(2)}
+                                  </td>
+
+                                  {/* Purchase Price (Cost) */}
+                                  <td className="py-4 px-6 text-right font-medium text-gray-600">
+                                    ₹{pPrice.toFixed(2)}
+                                  </td>
+
+                                  {/* Selling Price */}
+                                  <td className="py-4 px-6 text-right font-black text-gray-950">
+                                    ₹{sPrice.toFixed(2)}
+                                  </td>
+                                  
+                                  {/* Unit Margin (Value & %) */}
+                                  <td className="py-4 px-6 text-right">
+                                    <div className="font-extrabold text-emerald-700">
+                                      ₹{marginValue.toFixed(2)}
+                                    </div>
+                                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                                      {marginPercent.toFixed(1)}%
                                     </span>
                                   </td>
+
+                                  {/* Full Stock Margin (Total potential profit) */}
+                                  <td className="py-4 px-6 text-right">
+                                    <div className="font-black text-purple-700">
+                                      ₹{totalStockMargin.toFixed(2)}
+                                    </div>
+                                    <span className="text-[11px] text-gray-400 font-medium block">
+                                      for {stock} units
+                                    </span>
+                                  </td>
+
+                                  {/* Current Stock with Quick Adjusters */}
                                   <td className="py-4 px-6 text-center">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteProduct(p.id);
-                                      }}
-                                      className="p-2 text-red-600 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center border border-transparent hover:border-red-100"
-                                      title="Delete Product"
-                                    >
-                                      <Trash2 className="w-4.5 h-4.5" />
-                                    </button>
+                                    <div className="flex flex-col items-center gap-1.5">
+                                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-black border ${
+                                        stock <= 0
+                                          ? "bg-red-100 text-red-800 border-red-300 animate-pulse"
+                                          : stock <= Number(p.reorder_level || 5)
+                                          ? "bg-amber-100 text-amber-800 border-amber-300"
+                                          : "bg-green-100 text-green-800 border-green-300"
+                                      }`}>
+                                        {stock <= 0 ? "0 Left (Out of Stock)" : `${stock} ${p.unit || "pcs"}`}
+                                      </span>
+
+                                      {/* Quick Stock Step Controls */}
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleQuickStockStep(p, -1)}
+                                          disabled={stock <= 0}
+                                          className="w-6 h-6 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded font-black text-xs flex items-center justify-center cursor-pointer disabled:opacity-30"
+                                          title="Decrease stock by 1"
+                                        >
+                                          -1
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleQuickStockStep(p, 1)}
+                                          className="w-6 h-6 bg-green-100 hover:bg-green-200 text-green-800 rounded font-black text-xs flex items-center justify-center cursor-pointer"
+                                          title="Add 1 to stock"
+                                        >
+                                          +1
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleQuickStockStep(p, 5)}
+                                          className="px-1.5 h-6 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded font-bold text-[11px] flex items-center justify-center cursor-pointer"
+                                          title="Add 5 to stock"
+                                        >
+                                          +5
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleQuickStockStep(p, 10)}
+                                          className="px-1.5 h-6 bg-purple-50 hover:bg-purple-100 text-purple-800 rounded font-bold text-[11px] flex items-center justify-center cursor-pointer"
+                                          title="Add 10 to stock"
+                                        >
+                                          +10
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* Actions: Edit Stock / Margins & Delete */}
+                                  <td className="py-4 px-6 text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditStockModal(p)}
+                                        className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                                        title="Edit Stock, Selling Price & Cost Margins"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteProduct(p.id);
+                                        }}
+                                        className="p-1.5 text-red-600 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center border border-transparent hover:border-red-100"
+                                        title="Delete Product"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -595,69 +983,537 @@ export default function AdminShops() {
               )}
             </div>
           ) : (
-            /* MAIN REGISTERED SHOPS OVERVIEW LIST */
+            /* REGISTERED SHOPS OVERVIEW OR FRANCHISE MODEL */
             <div className="space-y-6">
-              <div>
-                <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
-                  <Store className="w-8 h-8 text-green-600" />
-                  Registered Shops List (Admin)
-                </h1>
-                <p className="text-sm text-gray-500 mt-1">Select a shop to manage its inventory and review details.</p>
+              {/* Top View Mode Navigation Tabs */}
+              <div className="flex flex-wrap items-center gap-2 p-1.5 bg-gray-100/90 rounded-2xl border border-gray-200 w-fit">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("shops")}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+                    activeTab === "shops"
+                      ? "bg-white text-gray-950 shadow-sm border border-gray-200/80"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
+                  }`}
+                >
+                  <Store className="w-4 h-4 text-green-600" />
+                  <span>Partner Shops ({shops.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("franchise_model")}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+                    activeTab === "franchise_model"
+                      ? "bg-white text-gray-950 shadow-sm border border-gray-200/80"
+                      : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
+                  }`}
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                  <span>Franchise Master Stock & Margin Model (944 Units / ₹3.00L)</span>
+                  <span className="ml-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-black rounded-full">
+                    20 Products
+                  </span>
+                </button>
               </div>
 
-              {error && (
-                <div className="p-4 mb-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">
-                  {error}
-                </div>
-              )}
+              {activeTab === "franchise_model" ? (
+                /* FRANCHISE MASTER STOCK & MARGIN MODEL (20 PRODUCTS, 944 UNITS, ₹3.00L COST, ₹4.50L REVENUE) */
+                <div className="space-y-6 animate-fade-in">
+                  {/* Header & Quick Action Deploy */}
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
+                    <div className="relative z-10 space-y-1.5 max-w-2xl">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-extrabold text-blue-200 border border-white/10 mb-1">
+                        <Sparkles className="w-3.5 h-3.5 text-blue-300" /> Standard Franchise Onboarding Model
+                      </div>
+                      <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                        Franchise Master Stock, Inventory & Price Model
+                      </h1>
+                      <p className="text-sm text-blue-200/90 leading-relaxed">
+                        Standard baseline stock and pricing structure automatically deployed to new shops upon acceptance: 
+                        <strong className="text-white"> 20 products, 944 total stock units, ₹3,00,000 cost value, ₹4,50,000 retail sales revenue, ₹1,50,000 net profit (50% avg margin)</strong>, and 36 promotional demo kits.
+                      </p>
+                    </div>
 
-              {loadingShops ? (
-                <div className="text-gray-500 font-medium">Loading shops list...</div>
-              ) : (
-                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-sm font-semibold">
-                          <th className="py-4 px-6">Shop Name</th>
-                          <th className="py-4 px-6">Franchise</th>
-                          <th className="py-4 px-6">Owner Name</th>
-                          <th className="py-4 px-6">Phone</th>
-                          <th className="py-4 px-6">State</th>
-                          <th className="py-4 px-6">GSTIN</th>
-                          <th className="py-4 px-6">Address</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {shops.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="py-8 px-6 text-center text-gray-500">
-                              No shops registered yet.
+                    {/* Deploy to Any Shop Widget */}
+                    <div className="relative z-10 bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl flex flex-col gap-2.5 min-w-[280px]">
+                      <label className="text-xs font-extrabold uppercase tracking-wider text-blue-100 flex items-center gap-1.5">
+                        <Send className="w-3.5 h-3.5 text-blue-300" /> Deploy Package to Shop
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedDeployShopId}
+                          onChange={(e) => setSelectedDeployShopId(e.target.value)}
+                          className="flex-1 bg-white text-gray-900 text-xs font-bold rounded-xl px-3 py-2 focus:outline-none border-none shadow-sm cursor-pointer"
+                        >
+                          <option value="">Select Partner Shop...</option>
+                          {shops.map(s => (
+                            <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!selectedDeployShopId || deployingStock}
+                          onClick={() => {
+                            const shop = shops.find(s => s.id === selectedDeployShopId);
+                            if (shop) handleDeployStandardStock(shop.id, shop.name);
+                          }}
+                          className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-gray-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          {deployingStock ? "Deploying..." : "Deploy"}
+                        </button>
+                      </div>
+                      <span className="text-[11px] text-blue-200">Applies 944 standard units & prices instantly.</span>
+                    </div>
+                  </div>
+
+                  {/* Metric Cards Directly Matching Spreadsheet Summary */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {/* 1. Products */}
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Master Catalog</span>
+                      <div className="text-2xl font-black text-gray-900 mt-1">{FRANCHISE_SUMMARY.totalProducts}</div>
+                      <span className="text-[11px] text-gray-500 font-medium">Standard SKUs</span>
+                    </div>
+
+                    {/* 2. Total Units */}
+                    <div className="bg-white border border-blue-200/80 bg-gradient-to-b from-blue-50/30 to-white rounded-2xl p-4 shadow-xs">
+                      <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">Total Quantity</span>
+                      <div className="text-2xl font-black text-blue-800 mt-1">{FRANCHISE_SUMMARY.totalStockUnits.toLocaleString("en-IN")}</div>
+                      <span className="text-[11px] text-blue-600 font-medium">Stock units per center</span>
+                    </div>
+
+                    {/* 3. Cost Value */}
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs">
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Total Inventory Cost</span>
+                      <div className="text-2xl font-black text-gray-950 mt-1">₹{FRANCHISE_SUMMARY.totalCostValue.toLocaleString("en-IN")}</div>
+                      <span className="text-[11px] text-gray-500 font-medium">₹3.00 Lakh purchase</span>
+                    </div>
+
+                    {/* 4. Sales Revenue */}
+                    <div className="bg-white border border-emerald-200/80 bg-gradient-to-b from-emerald-50/30 to-white rounded-2xl p-4 shadow-xs">
+                      <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Revenue on Sales</span>
+                      <div className="text-2xl font-black text-emerald-800 mt-1">₹{FRANCHISE_SUMMARY.totalRevenue.toLocaleString("en-IN")}</div>
+                      <span className="text-[11px] text-emerald-600 font-medium">₹4.50 Lakh retail</span>
+                    </div>
+
+                    {/* 5. Net Profit & Margin */}
+                    <div className="bg-white border border-purple-200/80 bg-gradient-to-b from-purple-50/30 to-white rounded-2xl p-4 shadow-xs">
+                      <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider block">Gross Profit</span>
+                      <div className="text-2xl font-black text-purple-800 mt-1">₹{FRANCHISE_SUMMARY.totalProfit.toLocaleString("en-IN")}</div>
+                      <span className="text-[11px] text-purple-600 font-semibold">{FRANCHISE_SUMMARY.averageMargin}% avg profit margin</span>
+                    </div>
+
+                    {/* 6. Demo Kits */}
+                    <div className="bg-white border border-amber-200/80 bg-gradient-to-b from-amber-50/30 to-white rounded-2xl p-4 shadow-xs">
+                      <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">Demo Kits</span>
+                      <div className="text-2xl font-black text-amber-800 mt-1">{FRANCHISE_SUMMARY.totalDemoKits} Kits</div>
+                      <span className="text-[11px] text-amber-700 font-bold">₹{FRANCHISE_SUMMARY.totalDemoValue.toLocaleString("en-IN")} value</span>
+                    </div>
+                  </div>
+
+                  {/* Filter & Search Bar */}
+                  <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                    {/* Category Pills */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {franchiseCategories.map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setFranchiseFilterCategory(cat)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            franchiseFilterCategory === cat
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative min-w-[240px]">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        value={franchiseSearch}
+                        onChange={(e) => setFranchiseSearch(e.target.value)}
+                        placeholder="Search products or SKU..."
+                        className="w-full pl-9 pr-3 py-1.5 text-xs font-medium bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* The 12-Column Spreadsheet Master Table */}
+                  <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse font-sans text-xs">
+                        <thead>
+                          <tr className="bg-gray-100/90 border-b border-gray-200 text-gray-700 font-extrabold uppercase tracking-wider text-[11px]">
+                            <th className="py-3.5 px-3">Category</th>
+                            <th className="py-3.5 px-3">Product Name</th>
+                            <th className="py-3.5 px-3 text-right">MRP</th>
+                            <th className="py-3.5 px-3 text-right">Selling Price</th>
+                            <th className="py-3.5 px-3 text-right">Unit Cost</th>
+                            <th className="py-3.5 px-3 text-center">Quantity</th>
+                            <th className="py-3.5 px-3 text-right">Value</th>
+                            <th className="py-3.5 px-3 text-right">Revenue on sales</th>
+                            <th className="py-3.5 px-3 text-right">Profit</th>
+                            <th className="py-3.5 px-3 text-center">Margin</th>
+                            <th className="py-3.5 px-3 text-center">Demo Kits</th>
+                            <th className="py-3.5 px-3 text-right">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filteredFranchiseProducts.map((prod, idx) => {
+                            let catBg = "bg-gray-100 text-gray-800 border-gray-200";
+                            if (prod.category === "Mastitis") catBg = "bg-purple-50 text-purple-800 border-purple-200";
+                            else if (prod.category === "Accessories") catBg = "bg-blue-50 text-blue-800 border-blue-200";
+                            else if (prod.category === "Hygiene") catBg = "bg-teal-50 text-teal-800 border-teal-200";
+                            else if (prod.category === "Diagnostic Kits") catBg = "bg-emerald-50 text-emerald-800 border-emerald-200";
+                            else if (prod.category === "Feed Supplement") catBg = "bg-amber-50 text-amber-800 border-amber-200";
+                            else if (prod.category === "Breeding Tool") catBg = "bg-rose-50 text-rose-800 border-rose-200";
+
+                            return (
+                              <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                <td className="py-3 px-3">
+                                  <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] border ${catBg}`}>
+                                    {prod.category}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="font-bold text-gray-900">{prod.name}</div>
+                                  <div className="text-[10px] font-mono text-gray-400">{prod.sku}</div>
+                                </td>
+                                <td className="py-3 px-3 text-right font-medium text-gray-600">
+                                  ₹{prod.mrp.toLocaleString("en-IN")}
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold text-gray-900">
+                                  ₹{prod.sale_price.toLocaleString("en-IN")}
+                                </td>
+                                <td className="py-3 px-3 text-right font-semibold text-gray-700">
+                                  ₹{prod.purchase_price.toLocaleString("en-IN")}
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-900 font-black rounded-md text-xs">
+                                    {prod.default_stock}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold text-gray-800">
+                                  ₹{prod.value.toLocaleString("en-IN")}
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold text-emerald-700">
+                                  ₹{prod.revenue.toLocaleString("en-IN")}
+                                </td>
+                                <td className="py-3 px-3 text-right font-black text-purple-700">
+                                  ₹{prod.profit.toLocaleString("en-IN")}
+                                </td>
+                                <td className="py-3 px-3 text-center font-black text-emerald-700">
+                                  <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 rounded border border-emerald-200">
+                                    {prod.margin_percent}%
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-center font-bold text-amber-800">
+                                  {prod.demo_kits > 0 ? (
+                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 rounded-md font-extrabold">
+                                      {prod.demo_kits}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-300">0</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold text-amber-900">
+                                  ₹{prod.demo_value.toLocaleString("en-IN")}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        {/* Table Footer Totals directly matching user spreadsheet */}
+                        <tfoot>
+                          <tr className="bg-slate-900 text-white font-black text-xs border-t-2 border-slate-800">
+                            <td colSpan={5} className="py-4 px-3 uppercase tracking-wider text-slate-300 text-sm">
+                              Total Inventory Cost
+                            </td>
+                            <td className="py-4 px-3 text-center text-blue-300 text-sm">
+                              {FRANCHISE_SUMMARY.totalStockUnits}
+                            </td>
+                            <td className="py-4 px-3 text-right text-white text-sm">
+                              ₹ {FRANCHISE_SUMMARY.totalCostValue.toLocaleString("en-IN")}
+                            </td>
+                            <td className="py-4 px-3 text-right text-emerald-300 text-sm">
+                              ₹ {FRANCHISE_SUMMARY.totalRevenue.toLocaleString("en-IN")}
+                            </td>
+                            <td className="py-4 px-3 text-right text-purple-300 text-sm">
+                              ₹ {FRANCHISE_SUMMARY.totalProfit.toLocaleString("en-IN")}
+                            </td>
+                            <td className="py-4 px-3 text-center text-emerald-300">
+                              {FRANCHISE_SUMMARY.averageMargin}%
+                            </td>
+                            <td className="py-4 px-3 text-center text-amber-300 text-sm">
+                              {FRANCHISE_SUMMARY.totalDemoKits}
+                            </td>
+                            <td className="py-4 px-3 text-right text-amber-300 text-sm">
+                              ₹ {FRANCHISE_SUMMARY.totalDemoValue.toLocaleString("en-IN")}
                             </td>
                           </tr>
-                        ) : (
-                          shops.map((shop) => (
-                            <tr key={shop.id} className="text-sm hover:bg-gray-50 transition-colors">
-                              <td className="py-4 px-6">
-                                <button
-                                  onClick={() => handleSelectShop(shop.id, shop.name)}
-                                  className="font-bold text-green-700 hover:text-green-600 hover:underline transition-colors text-left cursor-pointer"
-                                >
-                                  {shop.name}
-                                </button>
-                              </td>
-                              <td className="py-4 px-6 text-gray-600">{shop.franchise?.name || "N/A"}</td>
-                              <td className="py-4 px-6 font-medium text-gray-800">{shop.owner?.full_name || "N/A"}</td>
-                              <td className="py-4 px-6 text-gray-600">{shop.phone || shop.owner?.phone || "N/A"}</td>
-                              <td className="py-4 px-6 text-gray-600">{shop.state || "N/A"}</td>
-                              <td className="py-4 px-6 font-mono text-gray-600">{shop.gstin || "N/A"}</td>
-                              <td className="py-4 px-6 text-gray-600 truncate max-w-xs">{shop.address || "N/A"}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                        </tfoot>
+                      </table>
+                    </div>
                   </div>
+                </div>
+              ) : (
+                /* MAIN REGISTERED SHOPS OVERVIEW LIST */
+                <div className="space-y-6">
+                  {/* Header Title */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                        <Store className="w-8 h-8 text-green-600" />
+                        Registered Shops & Centers (Admin)
+                      </h1>
+                      <p className="text-sm text-gray-500 mt-1">Review shop registrations, approve partners, update stock, and audit profit margins.</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={fetchShops}
+                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl cursor-pointer shadow-sm"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-green-600" /> Refresh List
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Network Overview Stat Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Registered Shops</span>
+                        <Store className="w-5 h-5 text-gray-400" />
+                      </div>
+                      <div className="text-2xl font-black text-gray-950 mt-2">{shops.length} Shops</div>
+                      <div className="flex items-center gap-2 text-xs font-bold mt-1">
+                        <span className="text-green-700">{shops.filter(s => s.status === 'approved').length} Approved</span>
+                        <span>•</span>
+                        <span className="text-amber-700">{shops.filter(s => s.status === 'pending').length} Pending</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Network Revenue</span>
+                        <IndianRupee className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div className="text-2xl font-black text-green-700 mt-2">
+                        ₹{shops.reduce((a, s) => a + Number(s.totalRevenue || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 font-medium">
+                        {shops.reduce((a, s) => a + Number(s.invoiceCount || 0), 0)} Total Invoices Billed
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Network Live Stock</span>
+                        <Package className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div className="text-2xl font-black text-blue-700 mt-2">
+                        ₹{shops.reduce((a, s) => a + Number(s.totalStockValue || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 font-medium">
+                        {shops.reduce((a, s) => a + Number(s.totalUnitsInStock || 0), 0)} Units in Total Inventory
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Network Potential Margin</span>
+                        <TrendingUp className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div className="text-2xl font-black text-emerald-600 mt-2">
+                        ₹{shops.reduce((a, s) => a + Number(s.totalPotentialMargin || 0), 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 font-medium">
+                        Cumulative gross profit across partner shops
+                      </div>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="p-4 mb-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl">
+                      {error}
+                    </div>
+                  )}
+
+                  {successMsg && (
+                    <div className="p-4 text-sm text-green-800 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
+                      <Check className="w-4 h-4" />
+                      {successMsg}
+                    </div>
+                  )}
+
+                  {loadingShops ? (
+                    <div className="text-gray-500 font-medium">Loading shops list...</div>
+                  ) : (
+                    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-xs font-bold uppercase tracking-wider">
+                              <th className="py-4 px-6">Shop Name & Status</th>
+                              <th className="py-4 px-6">Owner & Contact</th>
+                              <th className="py-4 px-6">Location & GSTIN</th>
+                              <th className="py-4 px-6 text-right">Sales Revenue</th>
+                              <th className="py-4 px-6 text-center">Live Stock</th>
+                              <th className="py-4 px-6 text-right">Stock Worth & Margin</th>
+                              <th className="py-4 px-6 text-center">Approval Action</th>
+                              <th className="py-4 px-6 text-center">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {shops.length === 0 ? (
+                              <tr>
+                                <td colSpan={8} className="py-8 px-6 text-center text-gray-500">
+                                  No shops registered yet.
+                                </td>
+                              </tr>
+                            ) : (
+                              shops.map((shop) => {
+                                const isApproved = shop.status === "approved";
+                                const isApproving = approvingShopId === shop.id;
+
+                                return (
+                                  <tr key={shop.id} className="text-sm hover:bg-gray-50 transition-colors">
+                                    {/* Shop Name & Approval Badge */}
+                                    <td className="py-4 px-6">
+                                      <button
+                                        onClick={() => handleSelectShop(shop.id, shop.name)}
+                                        className="font-extrabold text-gray-950 hover:text-green-700 hover:underline transition-colors text-left cursor-pointer text-base block"
+                                      >
+                                        {shop.name}
+                                      </button>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${
+                                          isApproved
+                                            ? "bg-green-100 text-green-800 border-green-300"
+                                            : "bg-amber-100 text-amber-800 border-amber-300"
+                                        }`}>
+                                          {isApproved ? "Approved Shop" : "Pending Approval"}
+                                        </span>
+                                        <span className="text-xs text-gray-400">{shop.franchise?.name || "Partner"}</span>
+                                      </div>
+                                    </td>
+
+                                    {/* Owner & Phone */}
+                                    <td className="py-4 px-6">
+                                      <div className="font-bold text-gray-900">{shop.owner?.full_name || "Unassigned"}</div>
+                                      <div className="text-xs text-gray-500 mt-0.5">{shop.phone || shop.owner?.phone || "No phone"}</div>
+                                    </td>
+
+                                    {/* Location & GSTIN */}
+                                    <td className="py-4 px-6 text-xs text-gray-600">
+                                      <div className="font-semibold text-gray-800">{shop.state || "India"}</div>
+                                      <div className="font-mono text-gray-400 mt-0.5">{shop.gstin || "No GSTIN"}</div>
+                                    </td>
+
+                                    {/* Sales in Period */}
+                                    <td className="py-4 px-6 text-right">
+                                      <div className="font-extrabold text-gray-950">
+                                        ₹{Number(shop.totalRevenue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                      </div>
+                                      <span className="text-xs text-gray-500 font-medium">
+                                        {shop.invoiceCount || 0} bills issued
+                                      </span>
+                                    </td>
+
+                                    {/* Stock & Out-of-Stock count */}
+                                    <td className="py-4 px-6 text-center">
+                                      <div className="font-extrabold text-blue-700">
+                                        {shop.totalUnitsInStock || 0} units
+                                      </div>
+                                      <div className="mt-0.5">
+                                        {Number(shop.outOfStockCount || 0) > 0 ? (
+                                          <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded font-extrabold text-[11px] border border-red-200">
+                                            {shop.outOfStockCount} Out of Stock
+                                          </span>
+                                        ) : (
+                                          <span className="text-green-700 text-xs font-semibold">In Stock</span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* Stock Valuation & Potential Margin */}
+                                    <td className="py-4 px-6 text-right">
+                                      <div className="font-bold text-purple-700">
+                                        ₹{Number(shop.totalStockValue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                                      </div>
+                                      <div className="text-xs text-emerald-700 font-extrabold mt-0.5">
+                                        Margin: ₹{Number(shop.totalPotentialMargin || 0).toLocaleString("en-IN", { minimumFractionDigits: 0 })} ({Number(shop.marginPercentage || 0).toFixed(1)}%)
+                                      </div>
+                                    </td>
+
+                                    {/* Shop Approval Action Button */}
+                                    <td className="py-4 px-6 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleShopApproval(shop.id, shop.status || (isApproved ? "approved" : "pending"))}
+                                        disabled={isApproving}
+                                        className={`px-3 py-1.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer flex items-center gap-1 mx-auto shadow-2xs ${
+                                          isApproved
+                                            ? "bg-gray-100 hover:bg-amber-100 text-gray-700 hover:text-amber-800 border border-gray-200"
+                                            : "bg-green-600 hover:bg-green-700 text-white shadow-sm"
+                                        }`}
+                                        title={isApproved ? "Click to revoke or set to Pending" : "Click to Approve this Shop & auto-deploy 944 stock units"}
+                                      >
+                                        <ShieldCheck className="w-3.5 h-3.5" />
+                                        {isApproving ? "Updating..." : isApproved ? "Revoke / Pending" : "Approve Shop"}
+                                      </button>
+                                    </td>
+
+                                    {/* Actions */}
+                                    <td className="py-4 px-6 text-center">
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeployStandardStock(shop.id, shop.name)}
+                                          disabled={deployingStock}
+                                          className="px-2.5 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-all cursor-pointer shadow-2xs flex items-center gap-1 disabled:opacity-50"
+                                          title="Deploy standard 944 units franchise stock allotment (20 products)"
+                                        >
+                                          <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                                          Deploy 944 Stock
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSelectShop(shop.id, shop.name)}
+                                          className="px-2.5 py-1.5 text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-xl transition-all cursor-pointer shadow-2xs flex items-center gap-1"
+                                          title="Manage Catalog, Update Stock & Margins"
+                                        >
+                                          <Package className="w-3.5 h-3.5" />
+                                          Manage Stock
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShopToDelete({ id: shop.id, name: shop.name })}
+                                          className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200/60 rounded-xl transition-all cursor-pointer shadow-2xs"
+                                          title={`Delete Shop "${shop.name}" and all associated data`}
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1054,6 +1910,245 @@ export default function AdminShops() {
                 Close Details
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal - Delete Shop and All Related Data Confirmation */}
+      {shopToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl border border-red-100 w-full max-w-lg overflow-hidden">
+            <div className="bg-gradient-to-r from-red-50 via-rose-50 to-amber-50 px-6 py-5 border-b border-red-200/80 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-red-100 border border-red-200 text-red-600 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-red-950">Delete Shop & All Data</h2>
+                  <p className="text-xs text-red-700 font-semibold">Irreversible permanent action</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !deletingShop && setShopToDelete(null)}
+                disabled={deletingShop}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white/80 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl">
+                <p className="text-sm font-bold text-gray-900 leading-snug">
+                  Are you sure you want to permanently delete <span className="text-red-700 font-black underline decoration-red-400 decoration-2">{shopToDelete.name}</span>?
+                </p>
+                <p className="text-xs text-amber-900 font-medium mt-1.5">
+                  This will completely and permanently erase all associated data for this shop, including:
+                </p>
+                <ul className="mt-2.5 space-y-1 text-xs text-amber-950 font-semibold list-disc list-inside">
+                  <li>All Invoices & billing line items</li>
+                  <li>All Products & catalog inventory stock</li>
+                  <li>All Stock movements & valuation logs</li>
+                  <li>All Customer records belonging to this shop</li>
+                  <li>All Restock requests & pending orders</li>
+                  <li>All Associated Shopkeeper User Accounts & Auth Profiles</li>
+                </ul>
+              </div>
+
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-bold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-600" />
+                <span>This action cannot be undone. All data will be permanently wiped.</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShopToDelete(null)}
+                disabled={deletingShop}
+                className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-100 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmDeleteShop}
+                disabled={deletingShop}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-extrabold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                {deletingShop ? "Deleting All Shop Data..." : "Yes, Delete Shop & All Data"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal - Admin Direct Stock & Full Margin Pricing Update */}
+      {editingStockProduct && selectedShopId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in font-sans">
+          <div className="bg-white rounded-3xl shadow-2xl border border-gray-200 w-full max-w-lg overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <Package className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-gray-950">Update Stock & Margins</h2>
+                  <p className="text-xs text-gray-500 font-medium">Assign inventory & price controls for {selectedShopName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStockProduct(null)}
+                disabled={updatingStock}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-xl hover:bg-white/80 transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStockAndPrice} className="p-6 space-y-5">
+              {/* Product mini header */}
+              <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-2xl flex items-center gap-3.5">
+                <div className="w-12 h-12 bg-white border border-gray-200 rounded-xl p-1 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {editingStockProduct.image_url ? (
+                    <img src={editingStockProduct.image_url} alt={editingStockProduct.name} className="w-full h-full object-contain" />
+                  ) : (
+                    <Package className="w-6 h-6 text-gray-400" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-950 text-sm leading-snug">{editingStockProduct.name}</h3>
+                  <span className="text-xs text-gray-500 font-mono mt-0.5 block">{editingStockProduct.sku || "No SKU"} • {editingStockProduct.unit || "pcs"}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Current Stock */}
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs font-extrabold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Stock Quantity ({editingStockProduct.unit || "pcs"}) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editStockVal}
+                    onChange={(e) => setEditStockVal(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10)))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-base font-black text-blue-900 focus:outline-none focus:border-blue-600"
+                    placeholder="0"
+                    required
+                  />
+                  <span className="text-[11px] text-gray-400 mt-1 block">Live stock in shop inventory</span>
+                </div>
+
+                {/* MRP */}
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs font-extrabold text-gray-700 uppercase tracking-wider mb-1.5">
+                    MRP (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editMrpVal}
+                    onChange={(e) => setEditMrpVal(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-base font-bold text-gray-900 focus:outline-none focus:border-blue-600"
+                    placeholder="0.00"
+                  />
+                  <span className="text-[11px] text-gray-400 mt-1 block">Maximum retail printed price</span>
+                </div>
+
+                {/* Purchase Price (Cost) */}
+                <div>
+                  <label className="block text-xs font-extrabold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Purchase Price (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editPurchasePriceVal}
+                    onChange={(e) => setEditPurchasePriceVal(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-base font-bold text-gray-900 focus:outline-none focus:border-blue-600"
+                    placeholder="0.00"
+                    required
+                  />
+                  <span className="text-[11px] text-gray-400 mt-1 block">Franchise cost price</span>
+                </div>
+
+                {/* Sale Price (Selling) */}
+                <div>
+                  <label className="block text-xs font-extrabold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Selling Price (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editSalePriceVal}
+                    onChange={(e) => setEditSalePriceVal(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-base font-bold text-gray-900 focus:outline-none focus:border-blue-600"
+                    placeholder="0.00"
+                    required
+                  />
+                  <span className="text-[11px] text-gray-400 mt-1 block">Customer retail bill price</span>
+                </div>
+              </div>
+
+              {/* Dynamic Live Margin Price Calculations */}
+              {(() => {
+                const sPrice = Number(editSalePriceVal || 0);
+                const pPrice = Number(editPurchasePriceVal || 0);
+                const stockQty = Number(editStockVal || 0);
+                const unitMargin = sPrice - pPrice;
+                const marginPct = sPrice > 0 ? (unitMargin / sPrice) * 100 : 0;
+                const totalStockProfit = stockQty * unitMargin;
+
+                return (
+                  <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+                    <span className="text-xs font-black text-emerald-950 uppercase tracking-wider block">
+                      Live Margin Price Calculations
+                    </span>
+                    <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                      <div className="bg-white p-2.5 rounded-xl border border-emerald-200/70">
+                        <span className="text-[11px] text-gray-500 font-bold block">Unit Profit</span>
+                        <span className="text-base font-black text-emerald-700">₹{unitMargin.toFixed(2)}</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-emerald-200/70">
+                        <span className="text-[11px] text-gray-500 font-bold block">Margin Rate</span>
+                        <span className="text-base font-black text-emerald-700">{marginPct.toFixed(1)}%</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-emerald-200/70">
+                        <span className="text-[11px] text-gray-500 font-bold block">Stock Profit</span>
+                        <span className="text-base font-black text-purple-700">₹{totalStockProfit.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingStockProduct(null)}
+                  disabled={updatingStock}
+                  className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingStock}
+                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-black text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" />
+                  {updatingStock ? "Saving Changes..." : "Save Stock & Margins"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
