@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useBluetoothPrinter } from "../context/BluetoothPrinterContext";
+import { isIOS } from "../utils/bluetoothPrinter";
 import { 
   Printer, 
   Bluetooth, 
   X, 
   RefreshCw, 
   Power, 
-  HelpCircle
+  HelpCircle,
+  ExternalLink
 } from "lucide-react";
 
 export default function BluetoothPrinterModal() {
@@ -181,9 +183,37 @@ export default function BluetoothPrinterModal() {
               <li>Once connected, bills in Billing POS and Invoices will print wirelessly!</li>
             </ol>
             {!isSupported && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px] font-medium mt-2">
-                ⚠️ Web Bluetooth is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Samsung Internet on Android/Windows.
-              </div>
+              isIOS() ? (
+                <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-blue-950 text-xs space-y-2 mt-3">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                    <span className="px-1.5 py-0.5 bg-blue-200 text-blue-800 rounded-md text-[10px] uppercase tracking-wider font-extrabold">iOS / iPhone Notice</span>
+                    Why Bluetooth doesn't show in Safari:
+                  </div>
+                  <p className="text-blue-800 text-[11px] leading-relaxed">
+                    Apple Safari disables the Web Bluetooth API on iOS. To connect directly to your portable Bluetooth printer on an iPhone or iPad:
+                  </p>
+                  <div className="space-y-1.5 pt-1">
+                    <a
+                      href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-blue-200 hover:border-blue-400 text-blue-700 font-bold transition-all shadow-2xs group"
+                    >
+                      <span className="flex items-center gap-2 text-xs">
+                        📲 <span>Open in <strong>Bluefy (Free Web BLE Browser)</strong></span>
+                      </span>
+                      <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    </a>
+                    <div className="text-[11px] text-blue-700 pl-1">
+                      💡 <strong>Or alternative:</strong> Use the standard <strong>"58mm Roll"</strong> button on checkout to print using standard iOS AirPrint / print dialog.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px] font-medium mt-2">
+                  ⚠️ Web Bluetooth is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Samsung Internet on Android/Windows.
+                </div>
+              )
             )}
           </div>
         </div>

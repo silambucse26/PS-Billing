@@ -57,6 +57,14 @@ const CMD = {
   CUT: [0x1D, 0x56, 0x41, 0x00], // GS V 65 0
 };
 
+export function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
 export class BluetoothPrinterService {
   private device: any = null;
   private characteristic: any = null;
@@ -92,9 +100,12 @@ export class BluetoothPrinterService {
    */
   public async connect(): Promise<{ success: boolean; deviceName?: string; error?: string }> {
     if (!this.isSupported()) {
+      const appleDevice = isIOS();
       return {
         success: false,
-        error: "Web Bluetooth is not supported in this browser. Please use Chrome, Edge, or Samsung Internet with Bluetooth enabled.",
+        error: appleDevice
+          ? "Apple Safari does not support Web Bluetooth. On iOS (iPhone/iPad), please open Pashu Central using the free 'Bluefy' browser from the App Store, or use standard receipt printing."
+          : "Web Bluetooth is not supported in this browser. Please use Chrome, Edge, or Samsung Internet with Bluetooth enabled.",
       };
     }
 

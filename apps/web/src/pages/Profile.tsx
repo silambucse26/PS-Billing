@@ -19,9 +19,11 @@ import {
   Bluetooth,
   Power,
   RefreshCw,
-  HelpCircle
+  HelpCircle,
+  ExternalLink
 } from "lucide-react";
 import { useBluetoothPrinter } from "../context/BluetoothPrinterContext";
+import { isIOS } from "../utils/bluetoothPrinter";
 
 export default function Profile() {
   const { user, profile, shop, refreshProfile } = useAuth();
@@ -1175,9 +1177,30 @@ export default function Profile() {
                 </div>
               </div>
               {!isBtSupported && (
-                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold">
-                  ⚠️ Note: Web Bluetooth is not supported in this browser. Please open Pashu Central in Google Chrome, Microsoft Edge, or Samsung Internet to pair with your SC588 printer.
-                </div>
+                isIOS() ? (
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-blue-950 text-xs space-y-2">
+                    <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 bg-blue-200 text-blue-800 rounded-md text-[10px] uppercase tracking-wider font-extrabold">iOS / iPhone Notice</span>
+                      Why Bluetooth is unavailable in Safari:
+                    </div>
+                    <p className="text-blue-800 text-[11px] leading-relaxed">
+                      Apple Safari does not support the Web Bluetooth API. On iPhone and iPad, you can connect directly to your SC588 printer using the free <strong>Bluefy</strong> browser.
+                    </p>
+                    <a
+                      href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 bg-white rounded-xl border border-blue-200 hover:border-blue-400 text-blue-700 font-bold transition-all shadow-2xs group"
+                    >
+                      <span>📲 Open / Install <strong>Bluefy (Free Web BLE Browser)</strong></span>
+                      <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    </a>
+                  </div>
+                ) : (
+                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold">
+                    ⚠️ Note: Web Bluetooth is not supported in this browser. Please open Pashu Central in Google Chrome, Microsoft Edge, or Samsung Internet to pair with your SC588 printer.
+                  </div>
+                )
               )}
             </div>
           </div>

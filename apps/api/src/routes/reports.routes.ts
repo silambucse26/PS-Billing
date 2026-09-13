@@ -807,6 +807,15 @@ router.delete('/admin/shops/:shopId', requireAuth, async (req: AuthRequest, res:
     }
 
     // 3. Cascade: Products & Stock Movements
+    try {
+      await supabaseAdmin
+        .from('stock_movements')
+        .delete()
+        .eq('shop_id', shopId);
+    } catch (e) {
+      // Column may or may not exist directly on stock_movements
+    }
+
     const { data: shopProducts } = await supabaseAdmin
       .from('products')
       .select('id')
@@ -877,6 +886,19 @@ router.delete('/admin/shops/:shopId', requireAuth, async (req: AuthRequest, res:
         .select('id, role')
         .eq('shop_id', shopId);
 
+      // STEP A: IMMEDIATELY unlink ALL profiles from this shop!
+      // This guarantees foreign key constraint 'profiles_shop_id_fkey' is never violated when deleting the shop row.
+      const { error: unlinkErr } = await supabaseAdmin
+        .from('profiles')
+        .update({ shop_id: null, franchise_id: null })
+        .eq('shop_id', shopId);
+
+      if (unlinkErr) {
+        console.error('Error unlinking profiles from shop:', unlinkErr);
+      }
+
+      // STEP B: For non-super_admin staff (shopkeepers, cashiers) assigned specifically to this shop,
+      // clean up their auth user and profile records
       if (linkedProfiles && linkedProfiles.length > 0) {
         for (const p of linkedProfiles) {
           if (p.role !== 'super_admin') {
@@ -891,13 +913,8 @@ router.delete('/admin/shops/:shopId', requireAuth, async (req: AuthRequest, res:
                 .delete()
                 .eq('id', p.id);
             } catch (errProf) {
-              console.warn('Could not delete profile:', p.id, errProf);
+              console.warn('Could not delete profile (already unlinked):', p.id, errProf);
             }
-          } else {
-            await supabaseAdmin
-              .from('profiles')
-              .update({ shop_id: null, franchise_id: null })
-              .eq('id', p.id);
           }
         }
       }
